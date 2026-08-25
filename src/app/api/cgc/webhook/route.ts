@@ -43,11 +43,23 @@ function isAuthorized(req: NextRequest): boolean {
 }
 
 /**
- * Grava a chamada crua (headers, query, corpo) em cgc_webhook_log antes de
- * qualquer outra coisa — o formato que o SASI manda não é documentado, então
- * isso é o jeito de descobrir na prática o que vem aí (ex.: um campo/header
- * "authorization" reaproveitável pro notify) sem precisar adivinhar.
- * Best-effort: nunca derruba o recebimento do webhook.
+ * Prefixos de header que são artefato da infraestrutura da própria Vercel
+ * (proxy interno, OIDC, cache), não informação enviada pelo SASI — incluem
+ * tokens sensíveis da plataforma (ex. x-vercel-oidc-token) que não fazem
+ * sentido parar gravados no nosso banco.
+ */
+const INFRA_HEADER_PREFIXES = ["x-vercel-", "x-real-ip", "x-forwarded-", "forwarded"];
+
+function isInfraHeader(name: string): boolean {
+  return INFRA_HEADER_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
+/**
+ * Grava a chamada crua (headers relevantes, query, corpo) em cgc_webhook_log
+ * antes de qualquer outra coisa — o formato que o SASI manda não é
+ * documentado, então isso é o jeito de descobrir na prática o que vem aí
+ * (ex.: um campo/header "authorization" reaproveitável pro notify) sem
+ * precisar adivinhar. Best-effort: nunca derruba o recebimento do webhook.
  */
 async function logWebhookCall(req: NextRequest, authorized: boolean, bodyRaw: string | null) {
   try {
@@ -56,7 +68,7 @@ async function logWebhookCall(req: NextRequest, authorized: boolean, bodyRaw: st
 
     const headers: Record<string, string> = {};
     req.headers.forEach((value, key) => {
-      headers[key] = value;
+      if (!isInfraHeader(key)) headers[key] = value;
     });
 
     let bodyJson: string | null = null;
