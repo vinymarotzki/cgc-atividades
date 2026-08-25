@@ -26,6 +26,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { v4 as uuidv4 } from "uuid";
+import { getDb, initDb } from "@/lib/db";
 import { syncAllGroups } from "@/lib/cgc/message-cache";
 import { resolveSasiToken } from "@/lib/sasi-api/client";
 
@@ -40,8 +42,94 @@ function isAuthorized(req: NextRequest): boolean {
   return header === secret || query === secret;
 }
 
+/**
+ * Prefixos de header que são artefato da infraestrutura da própria Vercel
+ * (proxy interno, OIDC, cache), não informação enviada pelo SASI — incluem
+ * tokens sensíveis da plataforma (ex. x-vercel-oidc-token) que não fazem
+ * sentido parar gravados no nosso banco.
+ */
+const INFRA_HEADER_PREFIXES = ["x-vercel-", "x-real-ip", "x-forwarded-", "forwarded"];
+
+function isInfraHeader(name: string): boolean {
+  return INFRA_HEADER_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
+/**
+ * Nomes de campo (chave de objeto, comparação case-insensitive) que carregam
+ * credencial — vistos na prática no payload real do SASI: `data.accessToken`
+ * é um JWT quase permanente com escopo `providers:notify:all`, e
+ * `deliveryCallback.headers.Authorization` é outro Bearer (de escopo
+ * diferente, pro callback de status). Mascarados antes de gravar: o
+ * cgc_webhook_log existe pra auditoria/descoberta de formato, não pra virar
+ * um segundo cofre de credenciais em texto puro.
+ */
+const SENSITIVE_KEYS = new Set(["accesstoken", "authorization", "secret"]);
+
+function redactSensitive(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSensitive);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = SENSITIVE_KEYS.has(key.toLowerCase()) ? "[REDACTED]" : redactSensitive(val);
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Grava a chamada crua (headers relevantes, query, corpo — com credenciais
+ * mascaradas) em cgc_webhook_log antes de qualquer outra coisa — o formato
+ * que o SASI manda não é documentado, então isso é o jeito de descobrir na
+ * prática o que vem aí sem precisar adivinhar. Best-effort: nunca derruba o
+ * recebimento do webhook.
+ */
+async function logWebhookCall(req: NextRequest, authorized: boolean, bodyRaw: string | null) {
+  try {
+    await initDb();
+    const db = getDb();
+
+    const headers = redactSensitive(
+      Object.fromEntries(
+        Array.from(req.headers.entries()).filter(([key]) => !isInfraHeader(key))
+      )
+    ) as Record<string, string>;
+
+    let bodyJson: string | null = null;
+    if (bodyRaw) {
+      try {
+        bodyJson = JSON.stringify(redactSensitive(JSON.parse(bodyRaw)));
+      } catch {
+        // Corpo não é JSON — fica só em body_raw.
+      }
+    }
+
+    await db.execute({
+      sql: `INSERT INTO cgc_webhook_log
+              (id, method, authorized, headers_json, query_json, body_json, body_raw, received_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        uuidv4(),
+        req.method,
+        authorized ? 1 : 0,
+        JSON.stringify(headers),
+        JSON.stringify(redactSensitive(Object.fromEntries(req.nextUrl.searchParams))),
+        bodyJson,
+        bodyJson ? null : bodyRaw,
+        new Date().toISOString(),
+      ],
+    });
+  } catch (error) {
+    console.error(`[cgc-webhook-log] falha ao gravar chamada recebida: ${error}`);
+  }
+}
+
 async function handle(req: NextRequest) {
-  if (!isAuthorized(req)) {
+  const bodyRaw = await req.text().catch(() => null);
+  const authorized = isAuthorized(req);
+  await logWebhookCall(req, authorized, bodyRaw || null);
+
+  if (!authorized) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 
