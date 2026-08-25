@@ -2,10 +2,11 @@
  * Resumo de atividades concluídas do CGC por grupo, para a página /controle.
  *
  * Era rota pública de propósito (ver /api/controle/checklists) enquanto os
- * dois apps rodavam no mesmo processo; agora que o sasi-checklist chama por
+ * dois apps rodavam no mesmo processo; agora que o cgc-checklist chama por
  * HTTP através da rede, exige o header x-controle-secret igual a
- * CONTROLE_PROXY_SECRET — sem isso qualquer um que descubra a URL do sasi-cgc
- * leria descrições e responsáveis do CGC. Números vêm do acompanhamento
+ * CONTROLE_PROXY_SECRET — sem isso qualquer um que descubra a URL do
+ * cgc-atividades leria descrições e responsáveis do CGC. Números vêm do
+ * acompanhamento
  * local (cgc_activity_status), igual ao card de cada grupo em
  * /atividades-cgc — não escaneia a API SASI.
  */

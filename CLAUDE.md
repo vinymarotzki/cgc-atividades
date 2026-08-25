@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The application lives at the repository root — `package.json`, `src/`, `.env.local`
 and every config file sit directly under the repo root, no subdirectory. This repo is
 a standalone split-out of the "Atividades do CGC" product, which used to live inside
-`sasi-checklist` alongside the "Checklist de Simulados" product; the two now share no
-code, only conventions (this file mirrors parts of `sasi-checklist`'s `CLAUDE.md`,
+`cgc-checklist` alongside the "Checklist de Simulados" product; the two now share no
+code, only conventions (this file mirrors parts of `cgc-checklist`'s `CLAUDE.md`,
 since both started as one codebase). See "Architecture" for how the two apps still
 talk to each other over HTTP.
 
@@ -22,7 +22,7 @@ npm run lint       # eslint .
 ```
 
 There is no test suite and no test runner configured, and no `db:seed` script — unlike
-sasi-checklist, this repo's default groups are created lazily by `ensureDefaultGroups()`
+cgc-checklist, this repo's default groups are created lazily by `ensureDefaultGroups()`
 (`src/lib/cgc/groups.ts`), called on every read, not by a seed script.
 
 Local access always needs the token in the URL on the very first visit, e.g.
@@ -35,7 +35,7 @@ token is rejected.
 
 Next.js 16 (App Router) + React 19 + TypeScript strict, Tailwind 3, Turso/libSQL
 (`@libsql/client`), deployed on Vercel. Path alias `@/*` maps to `src/*`. No `xlsx`
-dependency here (that stays in sasi-checklist, for its own report exports) and no
+dependency here (that stays in cgc-checklist, for its own report exports) and no
 shadcn `Button` usage currently, despite `shadcn` being a dependency.
 
 The config is `next.config.js` (CommonJS) — `output: "standalone"` plus a conditional
@@ -55,10 +55,11 @@ API: `/api/cgc/groups`, `/api/cgc/activities`, `/api/cgc/observations`,
 since Vercel Hobby's native cron is limited to once a day), `/api/cgc/webhook`
 (receives the SASI-side webhook registered manually in the SASI admin panel).
 
-Also: `/api/controle/cgc` and `/api/controle/cgc/activities` — **public** routes (no
-auth) that exist purely so the sibling `sasi-checklist` app's `/controle` report page
-can show CGC data without this app's database or the SASI API being reachable from
-that repo. `sasi-checklist` proxies to these two routes via its own
+Also: `/api/controle/cgc` and `/api/controle/cgc/activities` — routes protected by a
+`CONTROLE_PROXY_SECRET` shared secret (not user auth) that exist purely so the sibling
+`cgc-checklist` app's `/controle` report page can show CGC data without this app's
+database or the SASI API being reachable from that repo. `cgc-checklist` proxies to
+these two routes via its own
 `/api/controle/cgc*`, reading this app's URL from its server-only `CGC_APP_URL` env
 var. Keep these two routes read-only and free of anything sensitive (no
 `profileFields`, no raw SASI tokens) since they're intentionally unauthenticated.
@@ -99,15 +100,16 @@ access until the user opens a fresh `?sasi-token=` link.
 
 Server side, `authenticateToken` (`src/lib/auth.ts`) validates the token against
 `AUTH_USER_ENDPOINT`; without that env var *every* token is rejected, in every
-environment. This is the same external endpoint sasi-checklist validates against —
+environment. This is the same external endpoint cgc-checklist validates against —
 one login, two apps.
 
 `src/lib/api-auth.ts` provides `requireAuth`, reading the token through
 `readSasiTokenHeader` (never from the URL) and also returning the raw token so it can
 be forwarded as a Bearer credential to the SASI API. The `/api/controle/cgc*` routes
 are the deliberate exception — they skip `requireAuth` on purpose, since they're meant
-to be called cross-repo by sasi-checklist's server, which has no `sasi-token` of its
-own to forward.
+to be called cross-repo by cgc-checklist's server (authenticated instead via
+`CONTROLE_PROXY_SECRET`, not a user `sasi-token` — that server has none of its own to
+forward).
 
 ### Database
 
@@ -116,8 +118,8 @@ table with `CREATE TABLE IF NOT EXISTS` and migrates older schemas via `ALTER TA
 wrapped in `try/catch` (a thrown "duplicate column" is the "already migrated" signal).
 `initDb()` is called at the top of route handlers — there is no migration tool.
 
-This is this repo's own Turso database (separate from sasi-checklist's — see
-`scripts/migrate-cgc-data.mjs` in sasi-checklist for the one-time data copy from the
+This is this repo's own Turso database (separate from cgc-checklist's — see
+`scripts/migrate-cgc-data.mjs` in cgc-checklist for the one-time data copy from the
 old shared database). Tables: `cgc_groups`, `cgc_activity_status`, `cgc_history`,
 `cgc_observations`, `cgc_group_totals`, `cgc_message_cache`, `cgc_message_cache_sync`.
 
@@ -194,7 +196,7 @@ off without needing a separate flag.
 `src/lib/checklist-status.ts` is the single source for statuses and their colors:
 `SEM_STATUS`, `NAO_INICIADO`, `EM_ANDAMENTO`, `CONCLUIDO`, `IMPEDIDO` (only the middle
 three are offered in the selector). Reuse it rather than defining a parallel palette —
-this is a copy of the same file sasi-checklist keeps, kept identical by convention
+this is a copy of the same file cgc-checklist keeps, kept identical by convention
 even though the repos no longer share code. `src/lib/cgc/colors.ts` layers a fixed
 brand color per seeded group (`getCgcGroupColor`: CGC `#004AAD`, NUPPAE `#FF3131`,
 NGOA `#FF751F`, CIPA `#457A00`) on top of `getCategoryColor`'s hash-based fallback for
@@ -211,9 +213,10 @@ that for new UI instead of introducing emoji.
 
 ## Git workflow
 
-`main` is currently the only branch — this repo hasn't been pushed to a remote or set
-up for pull requests yet. The convention below is documented in advance so it's ready
-once that happens; it mirrors sasi-checklist's workflow exactly.
+`main` is currently the only branch — this repo has a remote
+(`github.com/vinymarotzki/cgc-atividades`) but isn't yet using the `develop`/`FIX/`
+branch + PR flow below. It mirrors cgc-checklist's workflow exactly, ready to adopt
+once the first feature branch is needed.
 
 `main` and `develop` are meant to be the only long-lived branches. Every change —
 feature, fix, chore, anything — gets its own branch off `develop`, named

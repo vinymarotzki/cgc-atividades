@@ -2,10 +2,11 @@
  * Atividades concluídas de um grupo do CGC, para exportar XLSX em /controle.
  *
  * Era rota pública de propósito (ver /api/controle/checklists) enquanto os
- * dois apps rodavam no mesmo processo; agora que o sasi-checklist chama por
+ * dois apps rodavam no mesmo processo; agora que o cgc-checklist chama por
  * HTTP através da rede, exige o header x-controle-secret igual a
- * CONTROLE_PROXY_SECRET — sem isso qualquer um que descubra a URL do sasi-cgc
- * leria descrições, comentários e responsáveis do CGC. O provider token
+ * CONTROLE_PROXY_SECRET — sem isso qualquer um que descubra a URL do
+ * cgc-atividades leria descrições, comentários e responsáveis do CGC. O
+ * provider token
  * vem de SASI_API_TOKEN (`resolveSasiToken(null)`), nunca do usuário — /controle
  * não tem sasi-token nenhum.
  *
