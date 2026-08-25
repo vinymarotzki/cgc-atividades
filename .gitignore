@@ -11,3 +11,6 @@ dist/
 
 # Script de inspeção manual do banco, roda solto com tsx/node
 query_db.mjs
+
+.vercel
+.env*

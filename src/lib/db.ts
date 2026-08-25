@@ -149,6 +149,28 @@ async function runMigrations() {
       synced_at TEXT NOT NULL
     )
   `);
+
+  // Registro bruto de cada chamada recebida em /api/cgc/webhook — o formato
+  // que o SASI manda não é documentado, então isso serve tanto de auditoria
+  // quanto de forma de descobrir campos úteis (ex.: um "authorization" no
+  // corpo) sem precisar adivinhar. Guarda tudo que a rota recebeu, autorizado
+  // ou não (o rejeitado tem body_json nulo, só method/headers).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS cgc_webhook_log (
+      id TEXT PRIMARY KEY,
+      method TEXT NOT NULL,
+      authorized INTEGER NOT NULL,
+      headers_json TEXT NOT NULL,
+      query_json TEXT NOT NULL,
+      body_json TEXT,
+      body_raw TEXT,
+      received_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(
+    `CREATE INDEX IF NOT EXISTS idx_cgc_webhook_log_received ON cgc_webhook_log (received_at DESC)`
+  );
 }
 
 let dbReadyPromise: Promise<void> | null = null;
