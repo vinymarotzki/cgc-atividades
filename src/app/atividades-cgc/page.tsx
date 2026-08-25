@@ -897,10 +897,8 @@ function AtividadesCgcPage() {
                             )}
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
                               <span style={{
-                                fontSize: 11, borderRadius: 4, padding: "2px 8px",
-                                background: overdue ? "#2A1A1A" : "#1E2333",
-                                color: overdue ? "#F87171" : deadlineLabel ? "#E8EAF0" : "#E8EAF0",
-                                border: `1px solid ${overdue ? "#DC2626" : "#2A3045"}`
+                                fontSize: 11,
+                                color: overdue ? "#F87171" : "#E8EAF0"
                               }}>
                                 {deadlineLabel ? `Prazo: ${deadlineLabel}` : "Sem prazo"}
                               </span>
