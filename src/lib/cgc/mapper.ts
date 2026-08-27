@@ -11,6 +11,7 @@ import type {
   SasiDataField,
   SasiProviderMessage,
 } from "@/lib/sasi-api/types";
+import { isRecord, toDataFields } from "./sasi-fields";
 import { getConsumedFieldNames, getFieldName } from "./field-map";
 import { CGC_DEFAULT_STATUS } from "./status-store";
 import type {
@@ -27,10 +28,6 @@ function toText(value: unknown): string | null {
   }
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -98,22 +95,6 @@ function mapDescription(
   return (field ? pickFormattedValue(field) : null) ?? toText(message.raw?.text);
 }
 
-/** `data_fields` chega como array; aceita também objeto indexado e raw.dataFields. */
-function toDataFields(message: SasiProviderMessage): SasiDataField[] {
-  const candidates: unknown[] = [message.data_fields, message.raw?.dataFields];
-
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate.filter(isRecord) as SasiDataField[];
-    }
-    if (isRecord(candidate)) {
-      const values = Object.values(candidate).filter(isRecord);
-      if (values.length > 0) return values as SasiDataField[];
-    }
-  }
-
-  return [];
-}
 
 /**
  * Todos os campos preenchíveis associados à mensagem: os do formulário
