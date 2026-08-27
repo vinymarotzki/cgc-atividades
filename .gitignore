@@ -14,3 +14,6 @@ query_db.mjs
 
 .vercel
 .env*
+
+# Worktrees isolados de execução de plano (subagent-driven-development)
+.worktrees/
