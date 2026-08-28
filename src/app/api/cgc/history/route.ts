@@ -19,18 +19,36 @@ export async function GET(req: NextRequest) {
     // Mesma lógica de /api/cgc/groups: total "solicitado" ao vivo (cacheado),
     // com fallback pro total local se a API SASI falhar.
     const [counts, liveTotals] = await Promise.all([
-      getGroupCounts().catch(() => ({} as Record<string, { total: number; concluded: number }>)),
+      getGroupCounts().catch(
+        () =>
+          ({} as Record<
+            string,
+            { total: number; concluded: number; blocked: number; inProgress: number }
+          >)
+      ),
       getLiveGroupTotals(groups, auth.token).catch(() => ({} as Record<string, number>)),
     ]);
 
     return NextResponse.json({
       history,
-      groups: groups.map((group) => ({
-        id: group.id,
-        name: group.name,
-        concluded: counts[group.id]?.concluded ?? 0,
-        total: liveTotals[group.id] ?? counts[group.id]?.total ?? 0,
-      })),
+      groups: groups.map((group) => {
+        const total = liveTotals[group.id] ?? counts[group.id]?.total ?? 0;
+        const concluded = counts[group.id]?.concluded ?? 0;
+        const inProgress = counts[group.id]?.inProgress ?? 0;
+        const blocked = counts[group.id]?.blocked ?? 0;
+
+        return {
+          id: group.id,
+          name: group.name,
+          concluded,
+          total,
+          // "Não iniciado" é o status padrão: toda atividade que chega e ainda
+          // não foi tratada (sem linha em cgc_activity_status) já conta aqui,
+          // então não dá pra contar via cgc_history — precisa do total ao
+          // vivo menos o que já saiu desse status.
+          notStarted: Math.max(0, total - concluded - inProgress - blocked),
+        };
+      }),
       user: auth.user,
     });
   } catch {

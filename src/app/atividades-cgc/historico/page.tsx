@@ -6,6 +6,7 @@ import { sasiAuthHeaders } from "@/lib/token";
 import { useSasiToken } from "@/hooks/useSasiToken";
 import { STATUS_LABELS, getStatusColor, getStatusPillStyle } from "@/lib/checklist-status";
 import { getCgcGroupColor } from "@/lib/cgc/colors";
+import { sortGroupsByDisplayOrder } from "@/lib/cgc/group-order";
 import {
   Lock, ArrowLeft, History, MessageSquare, Pencil, Trash2, RefreshCw,
   FileText, ChevronDown, ChevronUp, User, type LucideIcon,
@@ -29,6 +30,7 @@ interface GroupSummary {
   name: string;
   concluded: number;
   total: number;
+  notStarted: number;
 }
 
 interface User {
@@ -194,14 +196,18 @@ function CgcHistoryPage() {
   }, [fetchHistory]);
 
   const activityGroups = useMemo(() => groupByActivity(history), [history]);
+  const sortedGroups = useMemo(() => sortGroupsByDisplayOrder(groups), [groups]);
 
   const inProgressCount = useMemo(
     () => activityGroups.filter((group) => group.currentStatus === "EM_ANDAMENTO").length,
     [activityGroups]
   );
-  const blockedCount = useMemo(
-    () => activityGroups.filter((group) => group.currentStatus === "IMPEDIDO").length,
-    [activityGroups]
+  // "Não iniciado" é o status padrão de toda atividade que ainda não foi
+  // tratada — não dá pra contar pelo histórico (não gera entrada lá), por
+  // isso vem pronto da API, calculado a partir do total ao vivo do grupo.
+  const notStartedCount = useMemo(
+    () => groups.reduce((sum, group) => sum + group.notStarted, 0),
+    [groups]
   );
 
   const toggleGroup = (messageId: string) => {
@@ -269,10 +275,34 @@ function CgcHistoryPage() {
       <main className="page-container">
         <div className="history-stats-grid">
           <div className="history-stat-card">
-            <div className="history-stat-value" style={{ color: getStatusColor("IMPEDIDO") }}>
-              {blockedCount}
+            <div className="history-stat-value" style={{ color: getStatusColor("NAO_INICIADO") }}>
+              {notStartedCount}
             </div>
             <div className="history-stat-label">Atividades paradas</div>
+            {sortedGroups.some((group) => group.notStarted > 0) && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                {sortedGroups
+                  .filter((group) => group.notStarted > 0)
+                  .map((group) => (
+                    <span
+                      key={group.id}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        background: "#1E2333", border: "1px solid #2A3045",
+                        borderRadius: 999, padding: "2px 8px 2px 6px",
+                        fontSize: 11, color: "#E8EAF0",
+                      }}
+                    >
+                      <span style={{
+                        width: 8, height: 8, borderRadius: "50%",
+                        background: getCgcGroupColor(group.name), flexShrink: 0,
+                      }} />
+                      {group.name}
+                      <strong style={{ color: getStatusColor("NAO_INICIADO") }}>{group.notStarted}</strong>
+                    </span>
+                  ))}
+              </div>
+            )}
           </div>
           <div className="history-stat-card">
             <div className="history-stat-value" style={{ color: getStatusColor("EM_ANDAMENTO") }}>
@@ -292,13 +322,13 @@ function CgcHistoryPage() {
           <div className="history-section-header">
             <h2 style={{ color: "#E8EAF0", fontSize: 16, margin: 0 }}>Concluídas por grupo</h2>
           </div>
-          {groups.length === 0 ? (
+          {sortedGroups.length === 0 ? (
             <div className="history-empty-state">
               <p>Nenhum grupo cadastrado ainda.</p>
             </div>
           ) : (
             <div className="history-completions-list" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              {groups.map((group) => {
+              {sortedGroups.map((group) => {
                 const pct = group.total > 0 ? Math.round((group.concluded / group.total) * 100) : 0;
                 return (
                   <div key={group.id} className="history-completion-card">
@@ -318,6 +348,12 @@ function CgcHistoryPage() {
                         </div>
                         <span style={{ color: "#E8EAF0", fontSize: 11, fontWeight: 700 }}>{pct}%</span>
                       </div>
+                    </div>
+                    <div
+                      title="Atividades enviadas"
+                      style={{ color: "#E8EAF0", fontSize: 22, fontWeight: 800, flexShrink: 0 }}
+                    >
+                      {group.total}
                     </div>
                   </div>
                 );
