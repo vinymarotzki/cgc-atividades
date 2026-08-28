@@ -48,7 +48,13 @@ export async function GET(req: NextRequest) {
     const [counts, liveTotals] = await Promise.all([
       // Contagem local: não custa chamada à API SASI, então os cards podem
       // mostrar o "concluído" sem esperar por rede externa.
-      getGroupCounts().catch(() => ({} as Record<string, { total: number; concluded: number }>)),
+      getGroupCounts().catch(
+        () =>
+          ({} as Record<
+            string,
+            { total: number; concluded: number; blocked: number; inProgress: number }
+          >)
+      ),
       // Total "solicitado" ao vivo (cacheado — ver group-totals.ts). Cai pro
       // total local se a API SASI falhar ou não tiver token disponível.
       getLiveGroupTotals(groups, auth.token).catch(() => ({} as Record<string, number>)),
