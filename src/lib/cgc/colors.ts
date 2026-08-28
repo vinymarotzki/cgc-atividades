@@ -10,6 +10,7 @@ import { getCategoryColor } from "@/lib/checklist-status";
 
 const FIXED_GROUP_COLORS: Record<string, string> = {
   CGC: "#004AAD",
+  AVA: "#B57EDC",
   NUPPAE: "#FF3131",
   NGOA: "#FF751F",
   CIPA: "#457A00",

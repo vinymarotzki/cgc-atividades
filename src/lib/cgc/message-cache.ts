@@ -368,8 +368,10 @@ export async function listGroupActivities(
 
   const search = params.search?.trim().toLowerCase();
   if (search) {
-    activities = activities.filter((activity) =>
-      activity.description?.toLowerCase().includes(search)
+    activities = activities.filter(
+      (activity) =>
+        activity.description?.toLowerCase().includes(search) ||
+        activity.contact?.toLowerCase().includes(search)
     );
   }
 

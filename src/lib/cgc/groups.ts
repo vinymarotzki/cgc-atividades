@@ -39,7 +39,7 @@ export interface CgcGroupInput {
 export const CGC_DEFAULT_CHANNEL_IDS = "33397";
 
 /** Grupos padrão, criados na primeira leitura para já aparecerem na tela. */
-export const CGC_DEFAULT_GROUP_NAMES = ["CGC", "NGOA", "NUPPAE", "CIPA"] as const;
+export const CGC_DEFAULT_GROUP_NAMES = ["CGC", "AVA", "NGOA", "NUPPAE", "CIPA"] as const;
 
 function toNullableText(value: unknown): string | null {
   if (typeof value !== "string") return null;
