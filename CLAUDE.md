@@ -66,8 +66,8 @@ var. Keep these two routes read-only and free of anything sensitive (no
 
 Groups themselves are read-only from the UI (seeded via `ensureDefaultGroups()` or
 created directly through the API) — the selection screen has no create/edit/delete
-affordance, only "Abrir", and always renders the four seeded groups in the fixed order
-CGC, NUPPAE, NGOA, CIPA (unknown groups sort last).
+affordance, only "Abrir", and always renders the five seeded groups in the fixed order
+CGC, AVA, NUPPAE, NGOA, CIPA (unknown groups sort last).
 
 Every page is a client component (`"use client"`) that fetches its own `/api/...`
 route. No server component fetches data, and no page talks to the SASI API directly —
@@ -150,7 +150,7 @@ or auth header for `api.bone.sasi.io`. Contract facts that constrain the code:
 
 A **group** (`cgc_groups`) is a local entity, not an API concept: it stores filters under
 the exact query-param names of `/provider/messages` (`category_ids`, `team_name`,
-`channel_ids`, `app_ids`). The four seeded groups (CGC, NGOA, NUPPAE, CIPA) all read the
+`channel_ids`, `app_ids`). The five seeded groups (CGC, AVA, NGOA, NUPPAE, CIPA) all read the
 same channel `33397`; what separates them is `data_field_value`, a value *inside* the
 message. Since the API cannot filter by form content, `/api/cgc/activities` scans pages
 server-side up to `SASI_CGC_SCAN_CAP` (default 500) and filters after mapping.
@@ -198,8 +198,8 @@ off without needing a separate flag.
 three are offered in the selector). Reuse it rather than defining a parallel palette —
 this is a copy of the same file cgc-checklist keeps, kept identical by convention
 even though the repos no longer share code. `src/lib/cgc/colors.ts` layers a fixed
-brand color per seeded group (`getCgcGroupColor`: CGC `#004AAD`, NUPPAE `#FF3131`,
-NGOA `#FF751F`, CIPA `#457A00`) on top of `getCategoryColor`'s hash-based fallback for
+brand color per seeded group (`getCgcGroupColor`: CGC `#004AAD`, AVA `#B57EDC`,
+NUPPAE `#FF3131`, NGOA `#FF751F`, CIPA `#457A00`) on top of `getCategoryColor`'s hash-based fallback for
 anything else.
 
 ### Styling

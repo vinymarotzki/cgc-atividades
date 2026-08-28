@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { sasiAuthHeaders } from "@/lib/token";
 import { useSasiToken } from "@/hooks/useSasiToken";
 import { getCgcGroupColor } from "@/lib/cgc/colors";
+import { sortGroupsByDisplayOrder } from "@/lib/cgc/group-order";
 import {
   ArrowLeft, ChevronUp, ChevronDown, Pencil, X, MessageSquare,
   History, Search, Lock, RefreshCw, ExternalLink, User,
@@ -38,22 +39,6 @@ interface Observation {
 type GroupWithProgress = CgcGroup & { total?: number; concluded?: number };
 
 const PAGE_SIZE = 50;
-
-/**
- * Ordem fixa de exibição dos grupos semeados. Grupos criados depois (fora
- * dessa lista) aparecem ao final, na ordem em que a API os devolve.
- */
-const GROUP_DISPLAY_ORDER = ["CGC", "NUPPAE", "NGOA", "CIPA"];
-
-function sortGroupsByDisplayOrder<T extends { name: string }>(groups: T[]): T[] {
-  return [...groups].sort((a, b) => {
-    const indexA = GROUP_DISPLAY_ORDER.indexOf(a.name.trim().toUpperCase());
-    const indexB = GROUP_DISPLAY_ORDER.indexOf(b.name.trim().toUpperCase());
-    const rankA = indexA === -1 ? GROUP_DISPLAY_ORDER.length : indexA;
-    const rankB = indexB === -1 ? GROUP_DISPLAY_ORDER.length : indexB;
-    return rankA - rankB;
-  });
-}
 
 /**
  * Intervalo de sincronização automática com a API SASI. Além dele, a lista é
