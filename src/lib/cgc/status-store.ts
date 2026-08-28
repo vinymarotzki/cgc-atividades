@@ -115,24 +115,33 @@ export async function backfillGroup(messageIds: string[], groupId: string): Prom
  * para montar esta tela, o que a arquitetura evita (ver `SASI_CGC_SCAN_CAP`
  * em `/api/cgc/activities`).
  */
-export async function getGroupCounts(): Promise<Record<string, { total: number; concluded: number }>> {
+export async function getGroupCounts(): Promise<
+  Record<string, { total: number; concluded: number; blocked: number; inProgress: number }>
+> {
   await initDb();
   const db = getDb();
   const result = await db.execute({
     sql: `SELECT group_id, COUNT(*) AS total,
-                 SUM(CASE WHEN status = 'CONCLUIDO' THEN 1 ELSE 0 END) AS concluded
+                 SUM(CASE WHEN status = 'CONCLUIDO' THEN 1 ELSE 0 END) AS concluded,
+                 SUM(CASE WHEN status = 'IMPEDIDO' THEN 1 ELSE 0 END) AS blocked,
+                 SUM(CASE WHEN status = 'EM_ANDAMENTO' THEN 1 ELSE 0 END) AS in_progress
           FROM cgc_activity_status
           WHERE group_id IS NOT NULL
           GROUP BY group_id`,
     args: [],
   });
 
-  const counts: Record<string, { total: number; concluded: number }> = {};
+  const counts: Record<
+    string,
+    { total: number; concluded: number; blocked: number; inProgress: number }
+  > = {};
   for (const row of result.rows) {
     const record = row as unknown as Record<string, unknown>;
     counts[String(record.group_id)] = {
       total: Number(record.total || 0),
       concluded: Number(record.concluded || 0),
+      blocked: Number(record.blocked || 0),
+      inProgress: Number(record.in_progress || 0),
     };
   }
   return counts;
