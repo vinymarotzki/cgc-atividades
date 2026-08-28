@@ -665,7 +665,7 @@ function AtividadesCgcPage() {
           <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
             <input
               type="text"
-              placeholder="Buscar atividade..."
+              placeholder="Buscar por atividade ou solicitante..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               style={{
