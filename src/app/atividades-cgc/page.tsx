@@ -605,13 +605,13 @@ function AtividadesCgcPage() {
                             <div>
                               <div style={{ color: "#E8EAF0", fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{total}</div>
                               <div style={{ color: "#E8EAF0", fontSize: 10, marginTop: 3 }}>
-                                {total === 1 ? "atividade solicitada" : "atividades solicitadas"}
+                                {total === 1 ? "atividade solicitada hoje" : "atividades solicitadas hoje"}
                               </div>
                             </div>
                             <div>
                               <div style={{ color: "#34D399", fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{concluded}</div>
                               <div style={{ color: "#E8EAF0", fontSize: 10, marginTop: 3 }}>
-                                {concluded === 1 ? "atividade concluída" : "atividades concluídas"}
+                                {concluded === 1 ? "atividade concluída hoje" : "atividades concluídas hoje"}
                               </div>
                             </div>
                           </div>

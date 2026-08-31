@@ -16,6 +16,7 @@
  */
 
 import { getDb, initDb } from "@/lib/db";
+import { isToday } from "./date-filter";
 import { getStatuses, backfillGroup } from "./status-store";
 import { groupIsUnconfigured, groupToFieldRule, groupToMessagesQuery, listGroups } from "./groups";
 import { mapMessageToActivity, messageMatchesFieldRule } from "./mapper";
@@ -365,6 +366,10 @@ export async function listGroupActivities(
       }
     })
     .filter((activity): activity is CgcActivity => activity !== null);
+
+  // Só mensagem de hoje: atividade passada não deve aparecer na listagem,
+  // em nenhum grupo — pedido explícito, não é um filtro opcional da tela.
+  activities = activities.filter((activity) => isToday(activity.createdAt));
 
   const search = params.search?.trim().toLowerCase();
   if (search) {
