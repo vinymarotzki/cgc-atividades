@@ -23,6 +23,8 @@
  */
 
 import { getDb, initDb } from "@/lib/db";
+import { isToday } from "./date-filter";
+import { getStatuses } from "./status-store";
 import { SasiApiError, resolveSasiToken } from "@/lib/sasi-api/client";
 import {
   SASI_MESSAGES_MAX_LIMIT,
@@ -223,6 +225,114 @@ export async function getLiveGroupTotals(
     return totals;
   } catch (error) {
     if (error instanceof SasiApiError) return totals;
+    throw error;
+  }
+}
+
+/**
+ * Busca só as mensagens de hoje de uma query base, mais nova primeiro. Some a
+ * paginação assim que acha a primeira mensagem que não é de hoje — nesse
+ * ponto o resto (dessa página e das seguintes) também não é.
+ */
+async function scanTodayMessages(
+  query: SasiMessagesQuery,
+  token: string
+): Promise<SasiProviderMessage[]> {
+  const messages: SasiProviderMessage[] = [];
+  let scanned = 0;
+  let page = 1;
+
+  while (scanned < SCAN_CAP) {
+    const batch = await fetchProviderMessages({ ...query, page, limit: SASI_MESSAGES_MAX_LIMIT }, { token });
+    if (batch.length === 0) break;
+    scanned += batch.length;
+
+    for (const message of batch) {
+      if (!isToday(message.created_at ?? message.generated_at)) return messages;
+      messages.push(message);
+    }
+
+    if (batch.length < SASI_MESSAGES_MAX_LIMIT) break;
+    page += 1;
+  }
+
+  return messages;
+}
+
+export interface GroupTodayCount {
+  total: number;
+  concluded: number;
+}
+
+/**
+ * Contagem "solicitadas hoje" / "concluídas hoje" pra tela de seleção —
+ * separada de `getLiveGroupTotals`/`getGroupCounts` de propósito: aqueles são
+ * acumulados históricos (o primeiro usado também pela página de Histórico) e
+ * não podem virar "só hoje" sem quebrar aquelas telas.
+ *
+ * "Concluída" não dá pra saber por data: `cgc_activity_status` só guarda
+ * quando o *status* mudou, não quando a *mensagem* chegou. Em vez de um JOIN
+ * novo, reaproveita a mesma varredura de hoje e cruza os ids com o status
+ * local já lido por `getStatuses` — mesma população de "solicitadas hoje",
+ * só filtrada por status.
+ *
+ * Sem cache/TTL: reseta sozinho a cada meia-noite sem precisar de lógica de
+ * expiração, ao custo de uma varredura por visita à tela de grupos (leve —
+ * normalmente resolve numa página só, mensagens vêm mais novas primeiro).
+ */
+export async function getTodayGroupCounts(
+  groups: CgcGroup[],
+  userToken: string | null
+): Promise<Record<string, GroupTodayCount>> {
+  const configured = groups.filter((group) => !groupIsUnconfigured(group));
+  const counts: Record<string, GroupTodayCount> = {};
+  for (const group of configured) counts[group.id] = { total: 0, concluded: 0 };
+
+  const token = resolveSasiToken(userToken);
+  if (!token || configured.length === 0) return counts;
+
+  const clusters = new Map<string, CgcGroup[]>();
+  for (const group of configured) {
+    const key = queryKey(groupToMessagesQuery(group));
+    const list = clusters.get(key) ?? [];
+    list.push(group);
+    clusters.set(key, list);
+  }
+
+  try {
+    const byGroup = new Map<string, SasiProviderMessage[]>();
+    for (const clusterGroups of clusters.values()) {
+      const baseQuery = groupToMessagesQuery(clusterGroups[0]);
+      const messages = await scanTodayMessages(baseQuery, token);
+
+      for (const group of clusterGroups) {
+        const rule = groupToFieldRule(group);
+        byGroup.set(
+          group.id,
+          rule ? messages.filter((message) => messageMatchesFieldRule(message, rule)) : messages
+        );
+      }
+    }
+
+    const allIds = Array.from(byGroup.values())
+      .flat()
+      .map((message) => (typeof message.id === "number" ? String(message.id) : null))
+      .filter((id): id is string => id !== null);
+    const statuses = await getStatuses(allIds);
+
+    for (const [groupId, messages] of byGroup) {
+      const ids = messages
+        .map((message) => (typeof message.id === "number" ? String(message.id) : null))
+        .filter((id): id is string => id !== null);
+      counts[groupId] = {
+        total: ids.length,
+        concluded: ids.filter((id) => statuses.get(id) === "CONCLUIDO").length,
+      };
+    }
+
+    return counts;
+  } catch (error) {
+    if (error instanceof SasiApiError) return counts;
     throw error;
   }
 }

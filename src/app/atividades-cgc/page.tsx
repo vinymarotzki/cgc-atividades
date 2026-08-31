@@ -9,7 +9,7 @@ import { getCgcGroupColor } from "@/lib/cgc/colors";
 import { sortGroupsByDisplayOrder } from "@/lib/cgc/group-order";
 import {
   ArrowLeft, ChevronUp, ChevronDown, Pencil, X, MessageSquare,
-  History, Search, Lock, RefreshCw, ExternalLink, User,
+  History, Search, Lock, RefreshCw, ExternalLink, User, Paperclip,
 } from "lucide-react";
 import {
   STATUS_OPTIONS,
@@ -18,6 +18,7 @@ import {
 import type {
   CgcActivitiesResponse,
   CgcActivity,
+  CgcAttachment,
   CgcGroup,
 } from "@/lib/cgc/types";
 
@@ -159,15 +160,27 @@ function AtividadesCgcPage() {
   const [activeActivityId, setActiveActivityId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [obsValue, setObsValue] = useState("");
+  const [viewingAttachment, setViewingAttachment] = useState<CgcAttachment | null>(null);
   // Cards de atividade escondem os campos dinâmicos por padrão; abrir um não
   // deve remover a memória dos outros já abertos, daí o Set em vez de um id só.
   const [expandedFieldIds, setExpandedFieldIds] = useState<Set<string>>(new Set());
   // Mesma lógica: comentários também ficam escondidos por padrão, um card com
   // vários comentários não deve empurrar a lista inteira pra baixo sozinho.
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
+  // Mesma lógica: anexos também ficam escondidos por padrão.
+  const [expandedAttachmentIds, setExpandedAttachmentIds] = useState<Set<string>>(new Set());
 
   function toggleFields(id: string) {
     setExpandedFieldIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAttachments(id: string) {
+    setExpandedAttachmentIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -605,13 +618,13 @@ function AtividadesCgcPage() {
                             <div>
                               <div style={{ color: "#E8EAF0", fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{total}</div>
                               <div style={{ color: "#E8EAF0", fontSize: 10, marginTop: 3 }}>
-                                {total === 1 ? "atividade solicitada" : "atividades solicitadas"}
+                                {total === 1 ? "atividade solicitada hoje" : "atividades solicitadas hoje"}
                               </div>
                             </div>
                             <div>
                               <div style={{ color: "#34D399", fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{concluded}</div>
                               <div style={{ color: "#E8EAF0", fontSize: 10, marginTop: 3 }}>
-                                {concluded === 1 ? "atividade concluída" : "atividades concluídas"}
+                                {concluded === 1 ? "atividade concluída hoje" : "atividades concluídas hoje"}
                               </div>
                             </div>
                           </div>
@@ -808,13 +821,20 @@ function AtividadesCgcPage() {
                               {activity.description}
                             </p>
 
-                            {(activity.fields.length > 0 || (observationsByActivity[activity.id] || []).length > 0) && (
+                            {(activity.fields.length > 0 || activity.attachments.length > 0 || (observationsByActivity[activity.id] || []).length > 0) && (
                               <div className="cgc-toggle-row">
                                 {activity.fields.length > 0 && (
                                   <button onClick={() => toggleFields(activity.id)} className="cgc-section-toggle">
                                     {expandedFieldIds.has(activity.id)
                                       ? (<><ChevronUp size={12} /> Ocultar detalhes</>)
                                       : (<><ChevronDown size={12} /> Ver detalhes ({activity.fields.length})</>)}
+                                  </button>
+                                )}
+                                {activity.attachments.length > 0 && (
+                                  <button onClick={() => toggleAttachments(activity.id)} className="cgc-section-toggle">
+                                    {expandedAttachmentIds.has(activity.id)
+                                      ? (<><ChevronUp size={12} /> Ocultar anexos</>)
+                                      : (<><Paperclip size={12} /> Anexos ({activity.attachments.length})</>)}
                                   </button>
                                 )}
                                 {(observationsByActivity[activity.id] || []).length > 0 && (
@@ -840,6 +860,28 @@ function AtividadesCgcPage() {
                                       {field.value}
                                     </span>
                                   </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {expandedAttachmentIds.has(activity.id) && activity.attachments.length > 0 && (
+                              <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
+                                {activity.attachments.map((attachment) => (
+                                  <button
+                                    key={attachment.url}
+                                    onClick={() => setViewingAttachment(attachment)}
+                                    style={{
+                                      display: "flex", alignItems: "center", gap: 6,
+                                      background: "transparent", border: "none", padding: 0,
+                                      color: "#7DA6FF", fontSize: 12, textAlign: "left",
+                                      fontFamily: "inherit", cursor: "pointer", wordBreak: "break-word"
+                                    }}
+                                  >
+                                    <Paperclip size={12} style={{ flexShrink: 0 }} />
+                                    <span style={{ flex: 1, minWidth: 0 }}>
+                                      {attachment.name || attachment.url}
+                                    </span>
+                                  </button>
                                 ))}
                               </div>
                             )}
@@ -1039,6 +1081,68 @@ function AtividadesCgcPage() {
                 Salvar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {viewingAttachment !== null && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 1000, padding: 20
+          }}
+          onClick={(e) => e.target === e.currentTarget && setViewingAttachment(null)}
+        >
+          <div style={{
+            background: "#1E2333", border: "1px solid #2A3045",
+            borderRadius: 12, padding: 16, width: "100%", maxWidth: 640,
+            maxHeight: "85vh", display: "flex", flexDirection: "column", gap: 12
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Paperclip size={15} style={{ color: "#E8EAF0", flexShrink: 0 }} />
+              <span style={{
+                flex: 1, minWidth: 0, color: "#E8EAF0", fontSize: 13, fontWeight: 500,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+              }}>
+                {viewingAttachment.name || viewingAttachment.url}
+              </span>
+              <button
+                onClick={() => setViewingAttachment(null)}
+                title="Fechar"
+                style={{ background: "transparent", border: "none", color: "#E8EAF0", cursor: "pointer", flexShrink: 0, display: "flex" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {viewingAttachment.mimeType?.startsWith("image/") ? (
+              <img
+                src={viewingAttachment.url}
+                alt={viewingAttachment.name || "Anexo"}
+                style={{ maxWidth: "100%", maxHeight: "65vh", borderRadius: 8, objectFit: "contain", margin: "0 auto" }}
+              />
+            ) : (
+              <div style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                padding: "32px 16px", color: "#E8EAF0"
+              }}>
+                <Paperclip size={28} />
+                <span style={{ fontSize: 13 }}>Sem pré-visualização para este arquivo.</span>
+              </div>
+            )}
+
+            <a
+              href={viewingAttachment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, alignSelf: "flex-end",
+                color: "#7DA6FF", fontSize: 12, textDecoration: "none"
+              }}
+            >
+              <ExternalLink size={12} /> Abrir original
+            </a>
           </div>
         </div>
       )}

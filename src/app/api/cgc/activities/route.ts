@@ -16,6 +16,7 @@ import {
   groupToMessagesQuery,
 } from "@/lib/cgc/groups";
 import { mapMessagesToActivities } from "@/lib/cgc/mapper";
+import { isToday } from "@/lib/cgc/date-filter";
 import { readSnapshot, recordHistory } from "@/lib/cgc/history";
 import { getNotifySubscriptionKey, notifySubscription } from "@/lib/sasi-api/notify";
 import { listGroupActivities, syncGroupMessages } from "@/lib/cgc/message-cache";
@@ -28,11 +29,7 @@ import {
 } from "@/lib/cgc/status-store";
 import type { CgcActivitiesResponse, CgcActivity } from "@/lib/cgc/types";
 import { SasiApiError, resolveSasiToken } from "@/lib/sasi-api/client";
-import {
-  SASI_MESSAGES_MAX_LIMIT,
-  fetchProviderMessages,
-  fetchProviderMessagesCount,
-} from "@/lib/sasi-api/messages";
+import { SASI_MESSAGES_MAX_LIMIT, fetchProviderMessages } from "@/lib/sasi-api/messages";
 import type { SasiMessagesQuery } from "@/lib/sasi-api/types";
 
 const DEFAULT_LIMIT = 50;
@@ -158,14 +155,18 @@ export async function GET(req: NextRequest) {
       // Sem roteamento por campo: a API pagina e conta sozinha.
       const query = { ...baseQuery, page, limit };
       const messages = await fetchProviderMessages(query, { token: sasiToken });
-      const total = await fetchProviderMessagesCount(query, { token: sasiToken }).catch(() => null);
       const mapped = mapMessagesToActivities(messages, { groupName: group.name });
       const { skipped } = mapped;
-      const activities = await applyLocalStatuses(mapped.activities, group.id);
+      // Só mensagem de hoje. O total da API (`fetchProviderMessagesCount`) conta
+      // o histórico inteiro e não serve mais depois desse filtro — sem varrer
+      // todas as páginas não dá pra saber o total exato de hoje, então fica
+      // null (como já acontece noutros casos de total desconhecido).
+      const todayActivities = mapped.activities.filter((activity) => isToday(activity.createdAt));
+      const activities = await applyLocalStatuses(todayActivities, group.id);
 
       const body: CgcActivitiesResponse = {
-        activities, group, page, limit, total,
-        hasMore: total !== null ? page * limit < total : messages.length >= limit,
+        activities, group, page, limit, total: null,
+        hasMore: messages.length >= limit,
         skipped, scanned: messages.length, truncated: false, unconfigured: false, user,
       };
       return NextResponse.json(body);
