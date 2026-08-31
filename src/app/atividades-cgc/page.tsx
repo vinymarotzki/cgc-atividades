@@ -9,7 +9,7 @@ import { getCgcGroupColor } from "@/lib/cgc/colors";
 import { sortGroupsByDisplayOrder } from "@/lib/cgc/group-order";
 import {
   ArrowLeft, ChevronUp, ChevronDown, Pencil, X, MessageSquare,
-  History, Search, Lock, RefreshCw, ExternalLink, User,
+  History, Search, Lock, RefreshCw, ExternalLink, User, Paperclip,
 } from "lucide-react";
 import {
   STATUS_OPTIONS,
@@ -165,9 +165,20 @@ function AtividadesCgcPage() {
   // Mesma lógica: comentários também ficam escondidos por padrão, um card com
   // vários comentários não deve empurrar a lista inteira pra baixo sozinho.
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
+  // Mesma lógica: anexos também ficam escondidos por padrão.
+  const [expandedAttachmentIds, setExpandedAttachmentIds] = useState<Set<string>>(new Set());
 
   function toggleFields(id: string) {
     setExpandedFieldIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAttachments(id: string) {
+    setExpandedAttachmentIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -808,13 +819,20 @@ function AtividadesCgcPage() {
                               {activity.description}
                             </p>
 
-                            {(activity.fields.length > 0 || (observationsByActivity[activity.id] || []).length > 0) && (
+                            {(activity.fields.length > 0 || activity.attachments.length > 0 || (observationsByActivity[activity.id] || []).length > 0) && (
                               <div className="cgc-toggle-row">
                                 {activity.fields.length > 0 && (
                                   <button onClick={() => toggleFields(activity.id)} className="cgc-section-toggle">
                                     {expandedFieldIds.has(activity.id)
                                       ? (<><ChevronUp size={12} /> Ocultar detalhes</>)
                                       : (<><ChevronDown size={12} /> Ver detalhes ({activity.fields.length})</>)}
+                                  </button>
+                                )}
+                                {activity.attachments.length > 0 && (
+                                  <button onClick={() => toggleAttachments(activity.id)} className="cgc-section-toggle">
+                                    {expandedAttachmentIds.has(activity.id)
+                                      ? (<><ChevronUp size={12} /> Ocultar anexos</>)
+                                      : (<><Paperclip size={12} /> Anexos ({activity.attachments.length})</>)}
                                   </button>
                                 )}
                                 {(observationsByActivity[activity.id] || []).length > 0 && (
@@ -840,6 +858,30 @@ function AtividadesCgcPage() {
                                       {field.value}
                                     </span>
                                   </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {expandedAttachmentIds.has(activity.id) && activity.attachments.length > 0 && (
+                              <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
+                                {activity.attachments.map((attachment) => (
+                                  <a
+                                    key={attachment.url}
+                                    href={attachment.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      display: "flex", alignItems: "center", gap: 6,
+                                      color: "#7DA6FF", fontSize: 12, textDecoration: "none",
+                                      wordBreak: "break-word"
+                                    }}
+                                  >
+                                    <Paperclip size={12} style={{ flexShrink: 0 }} />
+                                    <span style={{ flex: 1, minWidth: 0 }}>
+                                      {attachment.name || attachment.url}
+                                    </span>
+                                    <ExternalLink size={12} style={{ flexShrink: 0 }} />
+                                  </a>
                                 ))}
                               </div>
                             )}
