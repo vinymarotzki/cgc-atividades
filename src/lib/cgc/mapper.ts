@@ -341,9 +341,11 @@ export function extractFields(message: SasiProviderMessage): CgcActivityField[] 
 }
 
 /**
- * Normaliza um item de `attachments[]` de forma desconhecida — a API SASI não
- * documenta o schema (o `/api-json` só mostra arrays vazios nos exemplos).
- * Tenta as chaves mais prováveis; sem URL utilizável, o item é descartado.
+ * Normaliza um item de `attachments[]` — confirmado ao vivo contra a API
+ * (o `/api-json` não documenta o schema, só mostra arrays vazios nos
+ * exemplos): `{ uuid, type, meta: { original: { url, name, mimeType, ... } } }`.
+ * As chaves de nível raiz (`url`/`name`/`mimeType` direto no item) ficam como
+ * reserva para o caso de outro tipo de anexo vir num formato mais simples.
  */
 function toAttachment(item: unknown): CgcAttachment | null {
   if (!isRecord(item)) {
@@ -351,7 +353,11 @@ function toAttachment(item: unknown): CgcAttachment | null {
     return url ? { url, name: null, mimeType: null } : null;
   }
 
+  const meta = isRecord(item.meta) ? item.meta : null;
+  const original = meta && isRecord(meta.original) ? meta.original : null;
+
   const url =
+    toText(original?.url) ??
     toText(item.url) ??
     toText(item.fileUrl) ??
     toText(item.file_url) ??
@@ -361,6 +367,7 @@ function toAttachment(item: unknown): CgcAttachment | null {
   if (!url) return null;
 
   const name =
+    toText(original?.name) ??
     toText(item.name) ??
     toText(item.filename) ??
     toText(item.fileName) ??
@@ -368,6 +375,7 @@ function toAttachment(item: unknown): CgcAttachment | null {
     toText(item.title);
 
   const mimeType =
+    toText(original?.mimeType) ??
     toText(item.mimeType) ??
     toText(item.mime_type) ??
     toText(item.contentType) ??
