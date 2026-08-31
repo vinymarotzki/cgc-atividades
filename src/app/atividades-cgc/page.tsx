@@ -811,7 +811,7 @@ function AtividadesCgcPage() {
                           borderLeft: `3px solid ${st.border}`
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                        <div className="cgc-activity-row" style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
                           <div style={{ flex: 1, minWidth: 200 }}>
                             <p style={{
                               color: activity.incomplete ? "#E8EAF0" : "#E8EAF0",
@@ -935,8 +935,8 @@ function AtividadesCgcPage() {
                             </div>
                           </div>
 
-                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-                            <div style={{ position: "relative" }}>
+                          <div className="cgc-activity-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                            <div className="cgc-activity-status" style={{ position: "relative" }}>
                               <select
                                 value={activity.status}
                                 onChange={(e) => updateStatus(activity.id, e.target.value)}
