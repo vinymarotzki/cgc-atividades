@@ -17,6 +17,7 @@ import { CGC_DEFAULT_STATUS } from "./status-store";
 import type {
   CgcActivity,
   CgcActivityField,
+  CgcAttachment,
   CgcDeadline,
   CgcSasiStatus,
 } from "./types";
@@ -339,6 +340,69 @@ export function extractFields(message: SasiProviderMessage): CgcActivityField[] 
   return fields;
 }
 
+/**
+ * Normaliza um item de `attachments[]` de forma desconhecida — a API SASI não
+ * documenta o schema (o `/api-json` só mostra arrays vazios nos exemplos).
+ * Tenta as chaves mais prováveis; sem URL utilizável, o item é descartado.
+ */
+function toAttachment(item: unknown): CgcAttachment | null {
+  if (!isRecord(item)) {
+    const url = toText(item);
+    return url ? { url, name: null, mimeType: null } : null;
+  }
+
+  const url =
+    toText(item.url) ??
+    toText(item.fileUrl) ??
+    toText(item.file_url) ??
+    toText(item.link) ??
+    toText(item.href) ??
+    toText(item.src);
+  if (!url) return null;
+
+  const name =
+    toText(item.name) ??
+    toText(item.filename) ??
+    toText(item.fileName) ??
+    toText(item.file_name) ??
+    toText(item.title);
+
+  const mimeType =
+    toText(item.mimeType) ??
+    toText(item.mime_type) ??
+    toText(item.contentType) ??
+    toText(item.content_type) ??
+    toText(item.type);
+
+  return { url, name, mimeType };
+}
+
+/**
+ * Anexos da mensagem: os da raiz (`raw.attachments`) e os de cada campo do
+ * formulário (`data_fields[].attachments`), deduplicados por URL.
+ */
+export function extractAttachments(message: SasiProviderMessage): CgcAttachment[] {
+  const sources: unknown[] = [
+    ...(Array.isArray(message.raw?.attachments) ? message.raw.attachments : []),
+  ];
+
+  for (const field of toDataFields(message)) {
+    if (Array.isArray(field.attachments)) sources.push(...field.attachments);
+  }
+
+  const attachments: CgcAttachment[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const item of sources) {
+    const attachment = toAttachment(item);
+    if (!attachment || seenUrls.has(attachment.url)) continue;
+    seenUrls.add(attachment.url);
+    attachments.push(attachment);
+  }
+
+  return attachments;
+}
+
 export interface MapMessageContext {
   /** Nome do grupo local selecionado, usado como grupo responsável. */
   groupName?: string | null;
@@ -372,6 +436,7 @@ export function mapMessageToActivity(
     deadline: extractDeadline(message),
     description: description ?? "Atividade sem descrição",
     fields,
+    attachments: extractAttachments(message),
     // Toda atividade nasce como Não Iniciado; a rota sobrepõe com o status
     // registrado em cgc_activity_status, quando houver.
     status: CGC_DEFAULT_STATUS,

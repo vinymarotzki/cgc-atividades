@@ -52,6 +52,16 @@ export interface CgcSasiStatus {
   id: number | null;
 }
 
+/**
+ * Anexo de uma mensagem, normalizado a partir de um objeto de forma
+ * desconhecida (a API SASI não documenta o schema de `attachments`).
+ */
+export interface CgcAttachment {
+  url: string;
+  name: string | null;
+  mimeType: string | null;
+}
+
 /** Atividade do CGC já normalizada para a interface. */
 export interface CgcActivity {
   /** Chave de render. Deriva do id da mensagem quando existe. */
@@ -63,6 +73,8 @@ export interface CgcActivity {
   description: string;
   /** Campos preenchidos da mensagem, lidos do `formattedValue`. */
   fields: CgcActivityField[];
+  /** Anexos da mensagem (raiz e por campo do formulário), deduplicados por URL. */
+  attachments: CgcAttachment[];
   /**
    * Status editável, no mesmo vocabulário do checklist. Vem da tabela local
    * `cgc_activity_status` e começa em NAO_INICIADO.
