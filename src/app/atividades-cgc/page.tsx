@@ -18,6 +18,7 @@ import {
 import type {
   CgcActivitiesResponse,
   CgcActivity,
+  CgcAttachment,
   CgcGroup,
 } from "@/lib/cgc/types";
 
@@ -159,6 +160,7 @@ function AtividadesCgcPage() {
   const [activeActivityId, setActiveActivityId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [obsValue, setObsValue] = useState("");
+  const [viewingAttachment, setViewingAttachment] = useState<CgcAttachment | null>(null);
   // Cards de atividade escondem os campos dinâmicos por padrão; abrir um não
   // deve remover a memória dos outros já abertos, daí o Set em vez de um id só.
   const [expandedFieldIds, setExpandedFieldIds] = useState<Set<string>>(new Set());
@@ -865,23 +867,21 @@ function AtividadesCgcPage() {
                             {expandedAttachmentIds.has(activity.id) && activity.attachments.length > 0 && (
                               <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
                                 {activity.attachments.map((attachment) => (
-                                  <a
+                                  <button
                                     key={attachment.url}
-                                    href={attachment.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                    onClick={() => setViewingAttachment(attachment)}
                                     style={{
                                       display: "flex", alignItems: "center", gap: 6,
-                                      color: "#7DA6FF", fontSize: 12, textDecoration: "none",
-                                      wordBreak: "break-word"
+                                      background: "transparent", border: "none", padding: 0,
+                                      color: "#7DA6FF", fontSize: 12, textAlign: "left",
+                                      fontFamily: "inherit", cursor: "pointer", wordBreak: "break-word"
                                     }}
                                   >
                                     <Paperclip size={12} style={{ flexShrink: 0 }} />
                                     <span style={{ flex: 1, minWidth: 0 }}>
                                       {attachment.name || attachment.url}
                                     </span>
-                                    <ExternalLink size={12} style={{ flexShrink: 0 }} />
-                                  </a>
+                                  </button>
                                 ))}
                               </div>
                             )}
@@ -1081,6 +1081,68 @@ function AtividadesCgcPage() {
                 Salvar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {viewingAttachment !== null && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 1000, padding: 20
+          }}
+          onClick={(e) => e.target === e.currentTarget && setViewingAttachment(null)}
+        >
+          <div style={{
+            background: "#1E2333", border: "1px solid #2A3045",
+            borderRadius: 12, padding: 16, width: "100%", maxWidth: 640,
+            maxHeight: "85vh", display: "flex", flexDirection: "column", gap: 12
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Paperclip size={15} style={{ color: "#E8EAF0", flexShrink: 0 }} />
+              <span style={{
+                flex: 1, minWidth: 0, color: "#E8EAF0", fontSize: 13, fontWeight: 500,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+              }}>
+                {viewingAttachment.name || viewingAttachment.url}
+              </span>
+              <button
+                onClick={() => setViewingAttachment(null)}
+                title="Fechar"
+                style={{ background: "transparent", border: "none", color: "#E8EAF0", cursor: "pointer", flexShrink: 0, display: "flex" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {viewingAttachment.mimeType?.startsWith("image/") ? (
+              <img
+                src={viewingAttachment.url}
+                alt={viewingAttachment.name || "Anexo"}
+                style={{ maxWidth: "100%", maxHeight: "65vh", borderRadius: 8, objectFit: "contain", margin: "0 auto" }}
+              />
+            ) : (
+              <div style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                padding: "32px 16px", color: "#E8EAF0"
+              }}>
+                <Paperclip size={28} />
+                <span style={{ fontSize: 13 }}>Sem pré-visualização para este arquivo.</span>
+              </div>
+            )}
+
+            <a
+              href={viewingAttachment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, alignSelf: "flex-end",
+                color: "#7DA6FF", fontSize: 12, textDecoration: "none"
+              }}
+            >
+              <ExternalLink size={12} /> Abrir original
+            </a>
           </div>
         </div>
       )}
