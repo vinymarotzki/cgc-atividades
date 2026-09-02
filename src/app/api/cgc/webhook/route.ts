@@ -4,13 +4,14 @@
  * registrar essa URL, então o cadastro em si é feito fora do código, direto
  * no painel, apontando pra esta rota.
  *
- * O formato do payload que o SASI envia não é documentado, então esta rota
- * não tenta parseá-lo: usa a chamada só como sinal de "algo mudou, verifica
- * agora" e deixa syncAllGroups (mesma função usada pelo cron do GitHub
- * Actions) fazer o trabalho de verdade — busca as mensagens de cada grupo na
- * API SASI, mapeia, grava no cache e dispara notify pra atividade nova. Se no
- * futuro descobrirmos o formato real do payload, dá pra otimizar lendo o
- * message_id direto dele em vez de rescanear.
+ * O formato do payload não é documentado. Pra Atividades (canal 33397) a
+ * rota ainda trata a chamada só como sinal de "algo mudou, verifica agora" e
+ * deixa syncAllGroups (mesma função do cron do GitHub Actions) rescanear via
+ * API SASI. Já pro IDR (canal 36602) não tem escolha: esse canal usa um
+ * provider SASI separado (tipo "webhook"), que não aparece em
+ * GET /provider/messages da PAT token normal — o único jeito de ler esses
+ * dados é parseando o corpo do evento "io.sasi.message" aqui mesmo (ver
+ * handleIdrChannelMessage / idr-store.ts).
  *
  * Segredo separado do cron (CGC_WEBHOOK_SECRET, não CGC_CRON_SECRET): a URL
  * do webhook fica cadastrada num painel de terceiro fora do nosso controle,
@@ -28,8 +29,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { getDb, initDb } from "@/lib/db";
+import { IDR_CHANNEL_ID } from "@/lib/cgc/idr-client";
+import { mapMessageToIdrRecord } from "@/lib/cgc/idr-mapper";
+import { storeIdrRecord } from "@/lib/cgc/idr-store";
 import { syncAllGroups } from "@/lib/cgc/message-cache";
 import { resolveSasiToken } from "@/lib/sasi-api/client";
+import type { SasiMessageRaw } from "@/lib/sasi-api/types";
 
 export const maxDuration = 60;
 
@@ -124,6 +129,32 @@ async function logWebhookCall(req: NextRequest, authorized: boolean, bodyRaw: st
   }
 }
 
+/**
+ * Canal 36602 (IDR) chega só aqui dentro — provider SASI separado (tipo
+ * "webhook"), não aparece em GET /provider/messages da PAT token normal, tem
+ * que ser lido do corpo do próprio evento "io.sasi.message". Grava direto no
+ * Turso do cgc-idr (ver idr-store.ts). Best-effort: nunca derruba o webhook.
+ */
+async function handleIdrChannelMessage(bodyRaw: string): Promise<void> {
+  let parsed: { type?: string; data?: SasiMessageRaw };
+  try {
+    parsed = JSON.parse(bodyRaw);
+  } catch {
+    return;
+  }
+
+  if (parsed.type !== "io.sasi.message") return;
+  const data = parsed.data;
+  if (!data || String(data.channel?.id ?? "") !== IDR_CHANNEL_ID) return;
+
+  try {
+    const record = mapMessageToIdrRecord({ id: data.id, raw: data });
+    if (record) await storeIdrRecord(record);
+  } catch (error) {
+    console.error(`[cgc-webhook-idr] falha ao gravar snapshot de IDR: ${error}`);
+  }
+}
+
 async function handle(req: NextRequest) {
   const bodyRaw = await req.text().catch(() => null);
   const authorized = isAuthorized(req);
@@ -132,6 +163,8 @@ async function handle(req: NextRequest) {
   if (!authorized) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
+
+  if (bodyRaw) await handleIdrChannelMessage(bodyRaw);
 
   const token = resolveSasiToken(null);
   if (!token) {
