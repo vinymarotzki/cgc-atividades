@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const groups = await listGroups();
-    // Só hoje: solicitadas e concluídas — ver getTodayGroupCounts pro porquê
+    // Só a partir do corte configurado: solicitadas e concluídas — ver getTodayGroupCounts pro porquê
     // de não reaproveitar o total acumulado (esse é usado pelo Histórico).
     const todayCounts = await getTodayGroupCounts(groups, auth.token).catch(
       () => ({} as Awaited<ReturnType<typeof getTodayGroupCounts>>)

@@ -16,7 +16,7 @@ import {
   groupToMessagesQuery,
 } from "@/lib/cgc/groups";
 import { mapMessagesToActivities } from "@/lib/cgc/mapper";
-import { isToday } from "@/lib/cgc/date-filter";
+import { isFromCutoffOnward } from "@/lib/cgc/date-filter";
 import { readSnapshot, recordHistory } from "@/lib/cgc/history";
 import { getNotifySubscriptionKey, notifySubscription } from "@/lib/sasi-api/notify";
 import { listGroupActivities, syncGroupMessages } from "@/lib/cgc/message-cache";
@@ -157,12 +157,13 @@ export async function GET(req: NextRequest) {
       const messages = await fetchProviderMessages(query, { token: sasiToken });
       const mapped = mapMessagesToActivities(messages, { groupName: group.name });
       const { skipped } = mapped;
-      // Só mensagem de hoje. O total da API (`fetchProviderMessagesCount`) conta
-      // o histórico inteiro e não serve mais depois desse filtro — sem varrer
-      // todas as páginas não dá pra saber o total exato de hoje, então fica
-      // null (como já acontece noutros casos de total desconhecido).
-      const todayActivities = mapped.activities.filter((activity) => isToday(activity.createdAt));
-      const activities = await applyLocalStatuses(todayActivities, group.id);
+      // Só mensagem a partir do corte configurado. O total da API
+      // (`fetchProviderMessagesCount`) conta o histórico inteiro e não serve mais
+      // depois desse filtro — sem varrer todas as páginas não dá pra saber o
+      // total exato dessa janela, então fica null (como já acontece noutros
+      // casos de total desconhecido).
+      const recentActivities = mapped.activities.filter((activity) => isFromCutoffOnward(activity.createdAt));
+      const activities = await applyLocalStatuses(recentActivities, group.id);
 
       const body: CgcActivitiesResponse = {
         activities, group, page, limit, total: null,

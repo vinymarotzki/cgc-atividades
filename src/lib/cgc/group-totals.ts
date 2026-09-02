@@ -23,7 +23,7 @@
  */
 
 import { getDb, initDb } from "@/lib/db";
-import { isToday } from "./date-filter";
+import { isFromCutoffOnward } from "./date-filter";
 import { getStatuses } from "./status-store";
 import { SasiApiError, resolveSasiToken } from "@/lib/sasi-api/client";
 import {
@@ -230,9 +230,10 @@ export async function getLiveGroupTotals(
 }
 
 /**
- * Busca só as mensagens de hoje de uma query base, mais nova primeiro. Some a
- * paginação assim que acha a primeira mensagem que não é de hoje — nesse
- * ponto o resto (dessa página e das seguintes) também não é.
+ * Busca só as mensagens a partir do corte configurado (CGC_DISPLAY_CUTOFF_DATE)
+ * de uma query base, mais nova primeiro. Some a paginação assim que acha a
+ * primeira mensagem anterior ao corte — nesse ponto o resto (dessa página e das
+ * seguintes) também está.
  */
 async function scanTodayMessages(
   query: SasiMessagesQuery,
@@ -248,7 +249,7 @@ async function scanTodayMessages(
     scanned += batch.length;
 
     for (const message of batch) {
-      if (!isToday(message.created_at ?? message.generated_at)) return messages;
+      if (!isFromCutoffOnward(message.created_at ?? message.generated_at)) return messages;
       messages.push(message);
     }
 
