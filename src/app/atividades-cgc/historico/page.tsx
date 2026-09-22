@@ -7,6 +7,7 @@ import { useSasiToken } from "@/hooks/useSasiToken";
 import { STATUS_LABELS, getStatusColor, getStatusPillStyle } from "@/lib/checklist-status";
 import { getCgcGroupColor } from "@/lib/cgc/colors";
 import { sortGroupsByDisplayOrder } from "@/lib/cgc/group-order";
+import { SasiSignalLogo } from "@/components/SasiSignalLogo";
 import {
   Lock, ArrowLeft, History, MessageSquare, Pencil, Trash2, RefreshCw,
   FileText, ChevronDown, ChevronUp, User, type LucideIcon,
@@ -225,7 +226,12 @@ function CgcHistoryPage() {
   if (loading) {
     return (
       <div style={{ background: "#0F1117", minHeight: "100vh", display: "grid", placeItems: "center", color: "#E8EAF0" }}>
-        Carregando histórico...
+        <div style={{ textAlign: "center" }}>
+          <div style={{ marginBottom: 16 }}>
+            <SasiSignalLogo />
+          </div>
+          <p style={{ fontSize: 14 }}>Autenticando...</p>
+        </div>
       </div>
     );
   }
@@ -344,7 +350,7 @@ function CgcHistoryPage() {
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
                         <div style={{ height: 6, background: "#1E2333", borderRadius: 999, overflow: "hidden", width: 120, maxWidth: "100%" }}>
-                          <div style={{ width: `${pct}%`, height: "100%", background: "#34D399", borderRadius: 999, transition: "width 0.4s ease" }} />
+                          <div style={{ width: "100%", height: "100%", background: "#34D399", borderRadius: 999, transform: `scaleX(${pct / 100})`, transformOrigin: "left", transition: "transform 0.4s ease" }} />
                         </div>
                         <span style={{ color: "#E8EAF0", fontSize: 11, fontWeight: 700 }}>{pct}%</span>
                       </div>
