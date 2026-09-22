@@ -7,6 +7,7 @@ import { sasiAuthHeaders } from "@/lib/token";
 import { useSasiToken } from "@/hooks/useSasiToken";
 import { getCgcGroupColor } from "@/lib/cgc/colors";
 import { sortGroupsByDisplayOrder } from "@/lib/cgc/group-order";
+import { SasiSignalLogo } from "@/components/SasiSignalLogo";
 import {
   ArrowLeft, ChevronUp, ChevronDown, Pencil, X, MessageSquare,
   History, Search, Lock, RefreshCw, ExternalLink, User, Paperclip,
@@ -463,12 +464,9 @@ function AtividadesCgcPage() {
     return (
       <div style={{ background: "#0F1117", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{
-            width: 40, height: 40, border: "3px solid #2A3045",
-            borderTopColor: "#3B6EF5", borderRadius: "50%",
-            animation: "spin 0.8s linear infinite", margin: "0 auto 16px"
-          }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <div style={{ marginBottom: 16 }}>
+            <SasiSignalLogo />
+          </div>
           <p style={{ color: "#E8EAF0", fontSize: 14 }}>Autenticando...</p>
         </div>
       </div>
@@ -630,7 +628,7 @@ function AtividadesCgcPage() {
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
                             <div style={{ height: 6, background: "#1E2333", borderRadius: 999, overflow: "hidden", width: 180, maxWidth: "100%" }}>
-                              <div style={{ width: `${pct}%`, height: "100%", background: "#34D399", borderRadius: 999, transition: "width 0.4s ease" }} />
+                              <div style={{ width: "100%", height: "100%", background: "#34D399", borderRadius: 999, transform: `scaleX(${pct / 100})`, transformOrigin: "left", transition: "transform 0.4s ease" }} />
                             </div>
                             <span style={{ color: "#E8EAF0", fontSize: 11, fontWeight: 700 }}>{pct}%</span>
                           </div>
@@ -785,8 +783,9 @@ function AtividadesCgcPage() {
                       <span style={{ color: "#34D399", fontSize: 12 }}>{catStats.done}/{catStats.total}</span>
                       <div style={{ width: 60, height: 4, background: "#1E2333", borderRadius: 2 }}>
                         <div style={{
-                          width: `${catStats.total > 0 ? (catStats.done / catStats.total) * 100 : 0}%`,
-                          height: "100%", background: catColor, borderRadius: 2, transition: "width 0.3s"
+                          width: "100%", height: "100%", background: catColor, borderRadius: 2,
+                          transform: `scaleX(${catStats.total > 0 ? catStats.done / catStats.total : 0})`,
+                          transformOrigin: "left", transition: "transform 0.3s"
                         }} />
                       </div>
                     </div>
@@ -807,8 +806,7 @@ function AtividadesCgcPage() {
                         key={activity.id}
                         style={{
                           background: "#181C27", border: "1px solid #2A3045",
-                          borderRadius: 8, padding: "9px 14px",
-                          borderLeft: `3px solid ${st.border}`
+                          borderRadius: 8, padding: "9px 14px"
                         }}
                       >
                         <div className="cgc-activity-row" style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
