@@ -127,18 +127,24 @@ const COLD_SCAN_CONCURRENCY = 5;
 
 /**
  * Processa uma página já buscada: grava no cache o que é novo (id > sinceId)
- * e casa com a regra de campo do grupo. Devolve o maior id visto e se havia
- * algo novo na página (usado só pelo scan sequencial, pra decidir se para).
+ * e casa com a regra de campo do grupo. Devolve o maior id visto, se havia
+ * algo novo na página (usado só pelo scan sequencial, pra decidir se para) e
+ * quantas atividades entraram no cache pela primeira vez.
+ *
+ * "Primeira vez" vem do INSERT atômico (insertIfNew), não de id > sinceId: a
+ * mesma mensagem chega pelo webhook (ingestWebhookMessage) e por aqui, e só
+ * quem gravar primeiro pode contar como nova — senão cada caminho disparava
+ * o próprio push e a atividade notificava duas vezes.
  */
 async function ingestBatch(
   batch: SasiProviderMessage[],
   group: CgcGroup,
   fieldRule: ReturnType<typeof groupToFieldRule>,
   sinceId: number
-): Promise<{ maxId: number; sawNew: boolean; matched: number }> {
+): Promise<{ maxId: number; sawNew: boolean; inserted: number }> {
   let maxId = sinceId;
   let sawNew = false;
-  let matched = 0;
+  let inserted = 0;
 
   for (const message of batch) {
     const id = typeof message.id === "number" ? message.id : null;
@@ -150,14 +156,17 @@ async function ingestBatch(
 
     try {
       const activity = mapMessageToActivity(message, { groupName: group.name });
-      await upsertActivity(group.id, activity);
-      matched += 1;
+      if (await insertIfNew(group.id, activity)) {
+        inserted += 1;
+      } else {
+        await upsertActivity(group.id, activity);
+      }
     } catch {
       // Mensagem irrecuperável: pula, não derruba a sincronização inteira.
     }
   }
 
-  return { maxId, sawNew, matched };
+  return { maxId, sawNew, inserted };
 }
 
 /**
@@ -235,9 +244,9 @@ export async function syncGroupMessages(group: CgcGroup, token: string): Promise
         if (batch.length === 0) break;
         scanned += batch.length;
 
-        const { maxId: batchMaxId, sawNew, matched } = await ingestBatch(batch, group, fieldRule, sinceId);
+        const { maxId: batchMaxId, sawNew, inserted } = await ingestBatch(batch, group, fieldRule, sinceId);
         if (batchMaxId > maxId) maxId = batchMaxId;
-        newlyMatched += matched;
+        newlyMatched += inserted;
 
         // Página sem nada novo: assume que o resto já foi visto e para de paginar.
         if (!sawNew) break;
