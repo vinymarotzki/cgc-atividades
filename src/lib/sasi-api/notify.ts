@@ -65,6 +65,6 @@ export async function notifySubscription(key: string, payload: NotifyPayload): P
     }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.error(`[sasi-notify] falha ao notificar "${key}": ${detail}`);
+    console.log(`[sasi-notify] falha ao notificar "${key}": ${detail}`);
   }
 }
