@@ -9,6 +9,7 @@ import type { ChecklistStatus } from "@/lib/checklist-status";
 import { STATUS_LABELS } from "@/lib/checklist-status";
 import type {
   SasiDataField,
+  SasiMessageRaw,
   SasiProviderMessage,
 } from "@/lib/sasi-api/types";
 import { isRecord, toDataFields } from "./sasi-fields";
@@ -457,6 +458,33 @@ export function mapMessageToActivity(
     // Só é incompleta se não houver nem texto nem campo preenchido: quando os
     // campos trazem conteúdo, a atividade é legível mesmo sem raw.text.
     incomplete: description === null && fields.length === 0,
+  };
+}
+
+/**
+ * Monta um ProviderMessageComposed a partir do `data` de um evento de webhook
+ * "io.sasi.message" — o webhook entrega só o que seria o `raw` da API (mesmas
+ * chaves camelCase: dataFields, profile, channel, team), sem o envelope do
+ * provider. Assim o resto do mapeamento (mapMessageToActivity,
+ * messageMatchesFieldRule) é reaproveitado sem um segundo caminho.
+ *
+ * `created_at` vem de `receivedAt` (quando o SASI recebeu a mensagem) e não de
+ * `generatedAt`: é o mesmo significado do `created_at` da API, e o
+ * `generatedAt` do webhook chega com horário local rotulado como UTC.
+ */
+export function webhookDataToProviderMessage(data: SasiMessageRaw): SasiProviderMessage {
+  const profile = isRecord(data.profile) ? data.profile : null;
+  const toId = (value: unknown) => (typeof value === "number" ? value : undefined);
+
+  return {
+    id: toId(data.id),
+    created_at: toText(data.receivedAt) ?? toText(data.sentAt) ?? toText(data.generatedAt) ?? undefined,
+    generated_at: toText(data.generatedAt) ?? undefined,
+    channel_id: toId(data.channel?.id),
+    app_id: toId(data.app?.id),
+    data_fields: Array.isArray(data.dataFields) ? data.dataFields : null,
+    raw: data,
+    profile: profile ? { name: toText(profile.name) ?? undefined } : null,
   };
 }
 
