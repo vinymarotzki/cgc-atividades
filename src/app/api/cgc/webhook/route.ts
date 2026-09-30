@@ -135,6 +135,34 @@ async function logWebhookCall(req: NextRequest, authorized: boolean, bodyRaw: st
  * que ser lido do corpo do próprio evento "io.sasi.message". Grava direto no
  * Turso do cgc-idr (ver idr-store.ts). Best-effort: nunca derruba o webhook.
  */
+async function handleIdrChannelMessage(bodyRaw: string): Promise<void> {
+  let parsed: { type?: string; data?: SasiMessageRaw };
+  try {
+    parsed = JSON.parse(bodyRaw);
+  } catch {
+    console.warn("[cgc-webhook-idr] corpo não é JSON, ignorando");
+    return;
+  }
+
+  console.log(`[cgc-webhook-idr] evento type=${parsed.type} channel=${parsed.data?.channel?.id}`);
+
+  if (parsed.type !== "io.sasi.message") return;
+  const data = parsed.data;
+  if (!data || String(data.channel?.id ?? "") !== IDR_CHANNEL_ID) return;
+
+  try {
+    const record = mapMessageToIdrRecord({ id: data.id, raw: data });
+    if (record) {
+      await storeIdrRecord(record);
+      console.log("[cgc-webhook-idr] snapshot de IDR gravado");
+    } else {
+      console.warn("[cgc-webhook-idr] mensagem do canal IDR não gerou registro");
+    }
+  } catch (error) {
+    console.error(`[cgc-webhook-idr] falha ao gravar snapshot de IDR: ${error}`);
+  }
+}
+
 async function handle(req: NextRequest) {
   const bodyRaw = await req.text().catch(() => null);
   const authorized = isAuthorized(req);
@@ -157,38 +185,6 @@ async function handle(req: NextRequest) {
 
   const result = await syncAllGroups(token);
   console.log("[cgc-webhook] sync concluído", JSON.stringify(result));
-  return NextResponse.json({ received: true, ...result });
-}
-
-  if (parsed.type !== "io.sasi.message") return;
-  const data = parsed.data;
-  if (!data || String(data.channel?.id ?? "") !== IDR_CHANNEL_ID) return;
-
-  try {
-    const record = mapMessageToIdrRecord({ id: data.id, raw: data });
-    if (record) await storeIdrRecord(record);
-  } catch (error) {
-    console.error(`[cgc-webhook-idr] falha ao gravar snapshot de IDR: ${error}`);
-  }
-}
-
-async function handle(req: NextRequest) {
-  const bodyRaw = await req.text().catch(() => null);
-  const authorized = isAuthorized(req);
-  await logWebhookCall(req, authorized, bodyRaw || null);
-
-  if (!authorized) {
-    return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  }
-
-  if (bodyRaw) await handleIdrChannelMessage(bodyRaw);
-
-  const token = resolveSasiToken(null);
-  if (!token) {
-    return NextResponse.json({ error: "SASI_API_TOKEN não configurado." }, { status: 500 });
-  }
-
-  const result = await syncAllGroups(token);
   return NextResponse.json({ received: true, ...result });
 }
 
