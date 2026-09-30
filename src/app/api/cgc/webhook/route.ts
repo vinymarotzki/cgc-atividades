@@ -135,13 +135,30 @@ async function logWebhookCall(req: NextRequest, authorized: boolean, bodyRaw: st
  * que ser lido do corpo do próprio evento "io.sasi.message". Grava direto no
  * Turso do cgc-idr (ver idr-store.ts). Best-effort: nunca derruba o webhook.
  */
-async function handleIdrChannelMessage(bodyRaw: string): Promise<void> {
-  let parsed: { type?: string; data?: SasiMessageRaw };
-  try {
-    parsed = JSON.parse(bodyRaw);
-  } catch {
-    return;
+async function handle(req: NextRequest) {
+  const bodyRaw = await req.text().catch(() => null);
+  const authorized = isAuthorized(req);
+  console.log(`[cgc-webhook] ${req.method} authorized=${authorized} bytes=${bodyRaw?.length ?? 0}`);
+
+  await logWebhookCall(req, authorized, bodyRaw || null);
+
+  if (!authorized) {
+    console.warn("[cgc-webhook] 401 não autorizado");
+    return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
+
+  if (bodyRaw) await handleIdrChannelMessage(bodyRaw);
+
+  const token = resolveSasiToken(null);
+  if (!token) {
+    console.error("[cgc-webhook] SASI_API_TOKEN não configurado");
+    return NextResponse.json({ error: "SASI_API_TOKEN não configurado." }, { status: 500 });
+  }
+
+  const result = await syncAllGroups(token);
+  console.log("[cgc-webhook] sync concluído", JSON.stringify(result));
+  return NextResponse.json({ received: true, ...result });
+}
 
   if (parsed.type !== "io.sasi.message") return;
   const data = parsed.data;
