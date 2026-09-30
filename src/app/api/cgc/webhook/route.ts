@@ -140,8 +140,11 @@ async function handleIdrChannelMessage(bodyRaw: string): Promise<void> {
   try {
     parsed = JSON.parse(bodyRaw);
   } catch {
+    console.warn("[cgc-webhook-idr] corpo não é JSON, ignorando");
     return;
   }
+
+  console.log(`[cgc-webhook-idr] evento type=${parsed.type} channel=${parsed.data?.channel?.id}`);
 
   if (parsed.type !== "io.sasi.message") return;
   const data = parsed.data;
@@ -149,7 +152,12 @@ async function handleIdrChannelMessage(bodyRaw: string): Promise<void> {
 
   try {
     const record = mapMessageToIdrRecord({ id: data.id, raw: data });
-    if (record) await storeIdrRecord(record);
+    if (record) {
+      await storeIdrRecord(record);
+      console.log("[cgc-webhook-idr] snapshot de IDR gravado");
+    } else {
+      console.warn("[cgc-webhook-idr] mensagem do canal IDR não gerou registro");
+    }
   } catch (error) {
     console.error(`[cgc-webhook-idr] falha ao gravar snapshot de IDR: ${error}`);
   }
@@ -158,9 +166,12 @@ async function handleIdrChannelMessage(bodyRaw: string): Promise<void> {
 async function handle(req: NextRequest) {
   const bodyRaw = await req.text().catch(() => null);
   const authorized = isAuthorized(req);
+  console.log(`[cgc-webhook] ${req.method} authorized=${authorized} bytes=${bodyRaw?.length ?? 0}`);
+
   await logWebhookCall(req, authorized, bodyRaw || null);
 
   if (!authorized) {
+    console.warn("[cgc-webhook] 401 não autorizado");
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 
@@ -168,10 +179,12 @@ async function handle(req: NextRequest) {
 
   const token = resolveSasiToken(null);
   if (!token) {
+    console.error("[cgc-webhook] SASI_API_TOKEN não configurado");
     return NextResponse.json({ error: "SASI_API_TOKEN não configurado." }, { status: 500 });
   }
 
   const result = await syncAllGroups(token);
+  console.log("[cgc-webhook] sync concluído", JSON.stringify(result));
   return NextResponse.json({ received: true, ...result });
 }
 
