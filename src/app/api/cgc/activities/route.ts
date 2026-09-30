@@ -217,25 +217,26 @@ export async function GET(req: NextRequest) {
  * READ_MESSAGES e não pode alterar o status lá.
  */
 export async function PATCH(req: NextRequest) {
+  console.log("1");
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
-
+  console.log("2");
   const body = await req.json().catch(() => null);
   const source = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
   const id = typeof source.id === "string" ? source.id.trim() : "";
   const status = source.status;
-
+  console.log("3");
   if (!id) {
     return NextResponse.json({ error: "ID da atividade obrigatório" }, { status: 400 });
   }
-
+  console.log("4");
   if (!isAllowedStatus(status)) {
     return NextResponse.json({ error: "Status inválido" }, { status: 400 });
   }
-
+  console.log("5 ");
   const user = { id: String(auth.user.id), name: String(auth.user.name) };
   const snapshot = readSnapshot(source);
-
+  console.log("6");
   try {
     const previous = await getStatus(id);
     await setStatus(id, status, user, snapshot.group_id);
@@ -250,7 +251,7 @@ export async function PATCH(req: NextRequest) {
         new_status: status,
         user,
       });
-
+  console.log("7");
       // Avisa só quando a atividade acabou de virar CONCLUIDO — best-effort,
       // nunca derruba a troca de status se a API de notify falhar.
       if (status === "CONCLUIDO") {
@@ -260,7 +261,7 @@ export async function PATCH(req: NextRequest) {
         await notifySubscription(getNotifySubscriptionKey(), { title: "Atividades do CGC", text });
       }
     }
-
+  console.log("8");
     return NextResponse.json({ success: true, id, status });
   } catch {
     return NextResponse.json({ error: "Falha ao salvar o status." }, { status: 500 });
