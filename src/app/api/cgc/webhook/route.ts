@@ -4,14 +4,17 @@
  * registrar essa URL, então o cadastro em si é feito fora do código, direto
  * no painel, apontando pra esta rota.
  *
- * O formato do payload não é documentado. Pra Atividades (canal 33397) a
- * rota ainda trata a chamada só como sinal de "algo mudou, verifica agora" e
- * deixa syncAllGroups (mesma função do cron do GitHub Actions) rescanear via
- * API SASI. Já pro IDR (canal 36602) não tem escolha: esse canal usa um
- * provider SASI separado (tipo "webhook"), que não aparece em
- * GET /provider/messages da PAT token normal — o único jeito de ler esses
- * dados é parseando o corpo do evento "io.sasi.message" aqui mesmo (ver
- * handleIdrChannelMessage / idr-store.ts).
+ * O formato do payload não é documentado, mas o evento "io.sasi.message" traz
+ * a mensagem inteira em `data` (mesmo formato do `raw` da API). Os dois canais
+ * são lidos direto desse corpo, porque ambos chegam por um provider SASI do
+ * tipo "webhook" que não aparece em GET /provider/messages da PAT token:
+ * - IDR (canal 36602) sempre foi assim (ver handleIdrChannelMessage /
+ *   idr-store.ts);
+ * - Atividades (canal 33397) passou a ser a partir de 02/09/2026, quando o
+ *   canal deixou de entregar pro provider da PAT (1415) e ficou só no do
+ *   webhook (1463) — ver ingestWebhookMessage em message-cache.ts.
+ * Depois disso a rota ainda chama syncAllGroups (mesma função do cron), que
+ * cobre o caso de o provider da PAT voltar a receber o canal.
  *
  * Segredo separado do cron (CGC_WEBHOOK_SECRET, não CGC_CRON_SECRET): a URL
  * do webhook fica cadastrada num painel de terceiro fora do nosso controle,
@@ -32,7 +35,7 @@ import { getDb, initDb } from "@/lib/db";
 import { IDR_CHANNEL_ID } from "@/lib/cgc/idr-client";
 import { mapMessageToIdrRecord } from "@/lib/cgc/idr-mapper";
 import { storeIdrRecord } from "@/lib/cgc/idr-store";
-import { syncAllGroups } from "@/lib/cgc/message-cache";
+import { ingestWebhookMessage, syncAllGroups } from "@/lib/cgc/message-cache";
 import { resolveSasiToken } from "@/lib/sasi-api/client";
 import type { SasiMessageRaw } from "@/lib/sasi-api/types";
 
@@ -68,9 +71,28 @@ function isInfraHeader(name: string): boolean {
  * cgc_webhook_log existe pra auditoria/descoberta de formato, não pra virar
  * um segundo cofre de credenciais em texto puro.
  */
-const SENSITIVE_KEYS = new Set(["accesstoken", "authorization", "secret"]);
+const SENSITIVE_KEYS = new Set([
+  "accesstoken",
+  "authorization",
+  "secret",
+  // Dados pessoais do remetente (telefone, e-mail, data de nascimento) —
+  // o formato do payload já é conhecido, não precisam ficar no log.
+  "profilefields",
+  "profileprops",
+  "customprops",
+]);
+
+/**
+ * `config.callbackUrl` (e qualquer outra URL ecoada pelo SASI) carrega o
+ * próprio `?secret=` do webhook em texto puro — a chave não é sensível, o
+ * valor da string é.
+ */
+function redactSecretInText(text: string): string {
+  return text.replace(/([?&]secret=)[^&\s"]*/gi, "$1[REDACTED]");
+}
 
 function redactSensitive(value: unknown): unknown {
+  if (typeof value === "string") return redactSecretInText(value);
   if (Array.isArray(value)) return value.map(redactSensitive);
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
@@ -120,7 +142,7 @@ async function logWebhookCall(req: NextRequest, authorized: boolean, bodyRaw: st
         JSON.stringify(headers),
         JSON.stringify(redactSensitive(Object.fromEntries(req.nextUrl.searchParams))),
         bodyJson,
-        bodyJson ? null : bodyRaw,
+        bodyJson || !bodyRaw ? null : redactSecretInText(bodyRaw),
         new Date().toISOString(),
       ],
     });
@@ -130,25 +152,32 @@ async function logWebhookCall(req: NextRequest, authorized: boolean, bodyRaw: st
 }
 
 /**
+ * Extrai a mensagem de um evento "io.sasi.message". Qualquer outro tipo de
+ * evento (io.sasi.app, io.sasi.profile) ou corpo que não seja JSON vira null.
+ */
+function parseMessageEvent(bodyRaw: string): SasiMessageRaw | null {
+  let parsed: { type?: string; data?: SasiMessageRaw };
+  try {
+    parsed = JSON.parse(bodyRaw);
+  } catch {
+    console.warn("[cgc-webhook] corpo não é JSON, ignorando");
+    return null;
+  }
+
+  console.log(`[cgc-webhook] evento type=${parsed.type} channel=${parsed.data?.channel?.id} id=${parsed.data?.id}`);
+
+  if (parsed.type !== "io.sasi.message") return null;
+  return parsed.data ?? null;
+}
+
+/**
  * Canal 36602 (IDR) chega só aqui dentro — provider SASI separado (tipo
  * "webhook"), não aparece em GET /provider/messages da PAT token normal, tem
  * que ser lido do corpo do próprio evento "io.sasi.message". Grava direto no
  * Turso do cgc-idr (ver idr-store.ts). Best-effort: nunca derruba o webhook.
  */
-async function handleIdrChannelMessage(bodyRaw: string): Promise<void> {
-  let parsed: { type?: string; data?: SasiMessageRaw };
-  try {
-    parsed = JSON.parse(bodyRaw);
-  } catch {
-    console.warn("[cgc-webhook-idr] corpo não é JSON, ignorando");
-    return;
-  }
-
-  console.log(`[cgc-webhook-idr] evento type=${parsed.type} channel=${parsed.data?.channel?.id}`);
-
-  if (parsed.type !== "io.sasi.message") return;
-  const data = parsed.data;
-  if (!data || String(data.channel?.id ?? "") !== IDR_CHANNEL_ID) return;
+async function handleIdrChannelMessage(data: SasiMessageRaw): Promise<void> {
+  if (String(data.channel?.id ?? "") !== IDR_CHANNEL_ID) return;
 
   try {
     const record = mapMessageToIdrRecord({ id: data.id, raw: data });
@@ -160,6 +189,26 @@ async function handleIdrChannelMessage(bodyRaw: string): Promise<void> {
     }
   } catch (error) {
     console.error(`[cgc-webhook-idr] falha ao gravar snapshot de IDR: ${error}`);
+  }
+}
+
+/**
+ * Atividades (canal 33397): grava a mensagem do corpo direto no cache dos
+ * grupos em que ela casa. Best-effort como o IDR — uma falha aqui ainda deixa
+ * o syncAllGroups logo depois tentar pelo caminho da API.
+ */
+async function handleCgcChannelMessage(data: SasiMessageRaw): Promise<string[]> {
+  try {
+    const groups = await ingestWebhookMessage(data);
+    if (groups.length > 0) {
+      console.log(`[cgc-webhook-cgc] mensagem ${data.id} gravada em: ${groups.join(", ")}`);
+    } else if (String(data.channel?.id ?? "") !== IDR_CHANNEL_ID) {
+      console.warn(`[cgc-webhook-cgc] mensagem ${data.id} (canal ${data.channel?.id}) não casou com nenhum grupo`);
+    }
+    return groups;
+  } catch (error) {
+    console.error(`[cgc-webhook-cgc] falha ao gravar mensagem ${data.id}: ${error}`);
+    return [];
   }
 }
 
@@ -175,7 +224,12 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 
-  if (bodyRaw) await handleIdrChannelMessage(bodyRaw);
+  const message = bodyRaw ? parseMessageEvent(bodyRaw) : null;
+  let ingestedInto: string[] = [];
+  if (message) {
+    await handleIdrChannelMessage(message);
+    ingestedInto = await handleCgcChannelMessage(message);
+  }
 
   const token = resolveSasiToken(null);
   if (!token) {
@@ -185,7 +239,7 @@ async function handle(req: NextRequest) {
 
   const result = await syncAllGroups(token);
   console.log("[cgc-webhook] sync concluído", JSON.stringify(result));
-  return NextResponse.json({ received: true, ...result });
+  return NextResponse.json({ received: true, ingestedInto, ...result });
 }
 
 export async function POST(req: NextRequest) {

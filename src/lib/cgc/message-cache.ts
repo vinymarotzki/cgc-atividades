@@ -19,11 +19,11 @@ import { getDb, initDb } from "@/lib/db";
 import { isFromCutoffOnward } from "./date-filter";
 import { getStatuses, backfillGroup } from "./status-store";
 import { groupIsUnconfigured, groupToFieldRule, groupToMessagesQuery, listGroups } from "./groups";
-import { mapMessageToActivity, messageMatchesFieldRule } from "./mapper";
+import { mapMessageToActivity, messageMatchesFieldRule, webhookDataToProviderMessage } from "./mapper";
 import { SasiApiError } from "@/lib/sasi-api/client";
 import { SASI_MESSAGES_MAX_LIMIT, fetchProviderMessages } from "@/lib/sasi-api/messages";
 import { getNotifySubscriptionKey, notifySubscription } from "@/lib/sasi-api/notify";
-import type { SasiProviderMessage } from "@/lib/sasi-api/types";
+import type { SasiMessageRaw, SasiProviderMessage } from "@/lib/sasi-api/types";
 import type { CgcActivity, CgcGroup } from "./types";
 
 const SYNC_TTL_MS = 15 * 1000;
@@ -259,9 +259,101 @@ export async function syncGroupMessages(group: CgcGroup, token: string): Promise
       await notifySubscription(getNotifySubscriptionKey(), { title: "Atividades do CGC", text });
     }
   } catch (error) {
-    if (error instanceof SasiApiError) return;
+    if (error instanceof SasiApiError) {
+      // Não derruba a listagem (o cache segue servível), mas precisa aparecer
+      // no log: engolido em silêncio, token expirado ou API fora do ar pareciam
+      // "sync concluído" enquanto nada novo entrava.
+      console.error(
+        `[cgc-sync] API SASI falhou no grupo "${group.name}" (${error.kind}${error.status ? ` ${error.status}` : ""}): ${error.message}`
+      );
+      return;
+    }
     throw error;
   }
+}
+
+/**
+ * Diz se a mensagem recebida pelo webhook pertence ao recorte do grupo — o
+ * equivalente local dos query params que a API aplicaria em
+ * GET /provider/messages. `category_ids` não vem no evento, então um grupo
+ * filtrado por categoria nunca casa por aqui (fica só com o sync pela API).
+ */
+function webhookMessageMatchesGroup(message: SasiProviderMessage, group: CgcGroup): boolean {
+  if (groupIsUnconfigured(group)) return false;
+  if (group.category_ids) return false;
+
+  const inList = (list: string | null, value: number | undefined) =>
+    !list || (value !== undefined && list.split(",").includes(String(value)));
+
+  if (!inList(group.channel_ids, message.channel_id)) return false;
+  if (!inList(group.app_ids, message.app_id)) return false;
+
+  if (group.team_name) {
+    const teamName = message.raw?.team?.name?.trim().toLowerCase();
+    if (teamName !== group.team_name.trim().toLowerCase()) return false;
+  }
+
+  const fieldRule = groupToFieldRule(group);
+  return !fieldRule || messageMatchesFieldRule(message, fieldRule);
+}
+
+/**
+ * Insere só se a mensagem ainda não estiver no cache e diz se inseriu. Atômico
+ * de propósito: um "SELECT, depois INSERT" deixava duas entregas simultâneas
+ * do mesmo evento (reenvio do SASI enquanto a primeira ainda roda o
+ * syncAllGroups) acharem ambas que a mensagem era nova e notificarem duas vezes.
+ */
+async function insertIfNew(groupId: string, activity: CgcActivity): Promise<boolean> {
+  const db = getDb();
+  const result = await db.execute({
+    sql: `INSERT INTO cgc_message_cache (message_id, group_id, data_json, cached_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(message_id) DO NOTHING`,
+    args: [activity.id, groupId, JSON.stringify(activity), new Date().toISOString()],
+  });
+  return Number(result.rowsAffected) > 0;
+}
+
+/**
+ * Grava no cache a mensagem que chegou no corpo de um webhook "io.sasi.message".
+ *
+ * Existe porque, desde 02/09/2026, as mensagens do canal 33397 passaram a ir
+ * só pro provider do webhook (1463) e não mais pro provider da PAT token
+ * (1415) — GET /provider/messages parou de enxergar atividade nova, e tratar o
+ * webhook só como "sinal pra rescanear a API" deixava tudo de fora. Lendo o
+ * corpo direto, a atividade entra no cache independente de qual provider a
+ * token lê. Não mexe na marca d'água do sync: os dois caminhos convivem, e o
+ * upsert por message_id evita duplicata se a API voltar a ver as mesmas.
+ *
+ * Devolve os nomes dos grupos em que a mensagem entrou.
+ */
+export async function ingestWebhookMessage(data: SasiMessageRaw): Promise<string[]> {
+  const message = webhookDataToProviderMessage(data);
+  if (typeof message.id !== "number") return [];
+
+  await initDb();
+  const groups = await listGroups();
+  const matchedGroups: string[] = [];
+
+  for (const group of groups) {
+    if (!webhookMessageMatchesGroup(message, group)) continue;
+
+    const activity = mapMessageToActivity(message, { groupName: group.name });
+    const isNew = await insertIfNew(group.id, activity);
+    if (!isNew) await upsertActivity(group.id, activity);
+    matchedGroups.push(group.name);
+
+    // Só avisa na primeira vez: o SASI pode reenviar o mesmo evento, e o sync
+    // pela API também não notifica o que já estava no cache.
+    if (isNew) {
+      await notifySubscription(getNotifySubscriptionKey(), {
+        title: "Atividades do CGC",
+        text: `1 nova atividade em ${group.name}.`,
+      });
+    }
+  }
+
+  return matchedGroups;
 }
 
 export interface SyncAllGroupsResult {
