@@ -297,13 +297,21 @@ function webhookMessageMatchesGroup(message: SasiProviderMessage, group: CgcGrou
   return !fieldRule || messageMatchesFieldRule(message, fieldRule);
 }
 
-async function isCached(messageId: string): Promise<boolean> {
+/**
+ * Insere só se a mensagem ainda não estiver no cache e diz se inseriu. Atômico
+ * de propósito: um "SELECT, depois INSERT" deixava duas entregas simultâneas
+ * do mesmo evento (reenvio do SASI enquanto a primeira ainda roda o
+ * syncAllGroups) acharem ambas que a mensagem era nova e notificarem duas vezes.
+ */
+async function insertIfNew(groupId: string, activity: CgcActivity): Promise<boolean> {
   const db = getDb();
   const result = await db.execute({
-    sql: "SELECT 1 FROM cgc_message_cache WHERE message_id = ? LIMIT 1",
-    args: [messageId],
+    sql: `INSERT INTO cgc_message_cache (message_id, group_id, data_json, cached_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(message_id) DO NOTHING`,
+    args: [activity.id, groupId, JSON.stringify(activity), new Date().toISOString()],
   });
-  return result.rows.length > 0;
+  return Number(result.rowsAffected) > 0;
 }
 
 /**
@@ -331,13 +339,13 @@ export async function ingestWebhookMessage(data: SasiMessageRaw): Promise<string
     if (!webhookMessageMatchesGroup(message, group)) continue;
 
     const activity = mapMessageToActivity(message, { groupName: group.name });
-    const alreadyCached = await isCached(activity.id);
-    await upsertActivity(group.id, activity);
+    const isNew = await insertIfNew(group.id, activity);
+    if (!isNew) await upsertActivity(group.id, activity);
     matchedGroups.push(group.name);
 
     // Só avisa na primeira vez: o SASI pode reenviar o mesmo evento, e o sync
     // pela API também não notifica o que já estava no cache.
-    if (!alreadyCached) {
+    if (isNew) {
       await notifySubscription(getNotifySubscriptionKey(), {
         title: "Atividades do CGC",
         text: `1 nova atividade em ${group.name}.`,
